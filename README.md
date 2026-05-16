@@ -4,6 +4,8 @@
 
 Euro Truck Simulator 2 / TruckersMP 联机聊天实时翻译工具。自动将多国语言聊天消息翻译为简体中文，以半透明悬浮窗口显示在游戏中。支持中文输入 → 翻译为英文 → 一键发送到游戏聊天。
 
+可以访问这个链接直接下载exe文件。https://github.com/BunNiuNai/ets2-translator/releases
+
 ## 功能特性
 
 - **实时聊天翻译**：监控 TruckersMP 聊天日志，批量翻译各语言消息到简体中文
