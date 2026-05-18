@@ -193,6 +193,8 @@ class OverlayWindow:
         self.text.tag_configure("sent_prefix", foreground="#4ec9b0",
                                 font=("Microsoft YaHei", self.cfg.font_size, "bold"))
         self.text.tag_configure("sent_arrow", foreground="#5a8a5a")
+        self.text.tag_configure("separator", foreground="#aaaaaa",
+                                font=("Microsoft YaHei", 6))
 
         # Right-click menu
         self.ctx_menu = tk.Menu(self.root, tearoff=0, bg="#222222", fg=FG)
@@ -453,6 +455,8 @@ class OverlayWindow:
             tag = "error" if trans.startswith("[") else "translation"
             tags.append((tag, trans))
         tags.append((None, "\n"))
+        # White separator line under each message
+        tags.append(("separator", "─" * 80 + "\n"))
 
         for tag, text in tags:
             if tag:

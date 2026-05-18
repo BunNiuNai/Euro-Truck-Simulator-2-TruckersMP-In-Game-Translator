@@ -36,15 +36,6 @@ CHAT_LINE_RE = re.compile(
     r"(?P<text>.+)$"
 )
 
-_CJK_RE = re.compile(r"[一-鿿]")
-_ALPHA_RE = re.compile(r"[a-zA-Z]")
-
-
-def _is_chinese(text: str) -> bool:
-    cjk = len(_CJK_RE.findall(text))
-    alpha = len(_ALPHA_RE.findall(text))
-    return cjk > alpha and cjk > len(text) * 0.3
-
 
 @dataclass
 class ChatMessage:
@@ -165,10 +156,6 @@ class ChatMonitor(threading.Thread):
                 msg = parse_line(line, self_name)
                 if msg is None:
                     continue
-                # Auto-detect self: first player who sends Chinese messages
-                if not self_name and _is_chinese(msg.text):
-                    self._self_name_ref["name"] = msg.player_name
-                    msg.is_self = True
                 self.queue.put(msg)
         except OSError:
             pass
