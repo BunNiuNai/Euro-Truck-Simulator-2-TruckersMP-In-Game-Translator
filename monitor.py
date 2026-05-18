@@ -121,8 +121,21 @@ class ChatMonitor(threading.Thread):
         name = self._self_name_ref.get("name", "")
         return name if name else None
 
+    def _check_log_switch(self):
+        """Check if a newer log file has appeared (e.g. after TMP reconnect).
+        Returns True if switched to a new file."""
+        latest = find_latest_log()
+        if latest and latest != self._log_path:
+            old = os.path.basename(self._log_path) if self._log_path else "None"
+            self._log_path = latest
+            self._last_size = os.path.getsize(latest)
+            self.status = f"已切换日志: {os.path.basename(latest)} (旧: {old})"
+            return True
+        return False
+
     def run(self):
         self.status = "运行中"
+        self._switch_check_count = 0
         while not self._stop_event.is_set():
             if self._log_path is None or not os.path.exists(self._log_path):
                 self._log_path = find_latest_log()
@@ -131,6 +144,12 @@ class ChatMonitor(threading.Thread):
                     self.status = f"已找到日志: {os.path.basename(self._log_path)}"
                 else:
                     self.status = log_dir_status()
+            else:
+                # Every ~3 seconds, check if TMP created a newer log file (e.g. after reconnect)
+                self._switch_check_count += 1
+                if self._switch_check_count >= 6:
+                    self._switch_check_count = 0
+                    self._check_log_switch()
 
             if self._log_path and os.path.exists(self._log_path):
                 self._tail_once()
