@@ -116,6 +116,13 @@ class OverlayWindow:
         self.input_frame = tk.Frame(self.outer, bg=BG)
         self.input_frame.pack(side=tk.BOTTOM, fill=tk.X)
 
+        # Notice label (hidden by default, shown above entry for translation events)
+        self.notice_label = tk.Label(
+            self.input_frame, text="", bg="#2a2a2a", fg="#f44747",
+            font=("Microsoft YaHei", 10, "bold"), anchor=tk.CENTER, height=1
+        )
+        self._notice_after = None
+
         # Entry row
         self.entry_row = tk.Frame(self.input_frame, bg=BG, height=32)
         self.entry_row.pack(fill=tk.X, padx=4, pady=(1, 3))
@@ -506,6 +513,8 @@ class OverlayWindow:
                 self.text.insert(pos, text)
 
     def poll_messages(self):
+        new_count = 0
+        baidu_count = 0
         while True:
             try:
                 item = self.queue.get_nowait()
@@ -514,27 +523,29 @@ class OverlayWindow:
                     baidu_fixed = len(item) >= 3 and item[2]
                     if baidu_fixed:
                         translated = f"[百度优化] {translated}"
+                        baidu_count += 1
                     self.add_message(msg.player_name, msg.text, translated, msg.is_self)
                     self.root.deiconify()
-                    if baidu_fixed:
-                        self._show_baidu_correction()
+                    if not msg.is_self:
+                        new_count += 1
             except Empty:
                 break
+
+        if baidu_count > 0:
+            self._show_notice(f"百度翻译优化了 {baidu_count} 条翻译", "#f44747")
+        elif new_count > 0:
+            self._show_notice(f"大模型翻译了 {new_count} 条消息", "#4ec9b0", "#1a2a1a")
+
         self._update_stats()
         self.root.after(250, self.poll_messages)
 
-    def _show_baidu_correction(self):
-        """Flash a brief notification that Baidu is optimizing the translation."""
-        note = tk.Label(
-            self.outer, text=" 百度翻译正在优化翻译 ",
-            bg="#f44747", fg="#ffffff",
-            font=("Microsoft YaHei", 11, "bold"),
-            padx=14, pady=5,
-        )
-        note.place(relx=0.5, rely=0.03, anchor=tk.N)
-        note.lift()
-        # Fade away after 3 seconds
-        self.root.after(3000, note.destroy)
+    def _show_notice(self, text: str, fg: str = "#f44747", bg: str = "#2a2a2a", duration_ms: int = 3000):
+        """Show a notice above the input box that auto-hides after duration_ms."""
+        if self._notice_after is not None:
+            self.root.after_cancel(self._notice_after)
+        self.notice_label.config(text=text, fg=fg, bg=bg)
+        self.notice_label.pack(side=tk.TOP, fill=tk.X, padx=4, pady=(2, 0), before=self.entry_row)
+        self._notice_after = self.root.after(duration_ms, self.notice_label.pack_forget)
 
     def _update_stats(self):
         if not self.stats_ref:
@@ -847,6 +858,28 @@ class OverlayWindow:
     def set_opacity(self, value: float):
         self.cfg.window_opacity = value
         self.root.attributes("-alpha", value)
+
+    def set_font_size(self, size: int):
+        """Update font size on all display widgets immediately."""
+        self.cfg.font_size = size
+        font = ("Microsoft YaHei", size)
+        bold_font = ("Microsoft YaHei", size, "bold")
+        small_font = ("Microsoft YaHei", max(6, size - 6))
+
+        self.text.configure(font=font)
+        self.send_entry.configure(font=font)
+
+        self.text.tag_configure("player", font=bold_font)
+        self.text.tag_configure("original", font=font)
+        self.text.tag_configure("arrow", font=font)
+        self.text.tag_configure("translation", font=font)
+        self.text.tag_configure("self_prefix", font=font)
+        self.text.tag_configure("error", font=font)
+        self.text.tag_configure("baidu_fix", font=bold_font)
+        self.text.tag_configure("sent_prefix", font=bold_font)
+        self.text.tag_configure("sent_arrow", font=font)
+        self.text.tag_configure("separator", font=small_font)
+        self.text.tag_configure("grip_marker", font=small_font)
 
     def run(self):
         self.root.after(100, self.poll_messages)

@@ -272,6 +272,7 @@ class App:
             self.cfg = dialog.result
             self.overlay.cfg = self.cfg  # sync overlay's config reference
             self.overlay.set_opacity(self.cfg.window_opacity)
+            self.overlay.set_font_size(self.cfg.font_size)
             save_config(self.cfg)
             self.overlay._apply_mode()
             if self.cfg.send_hotkey != old_hotkey:

@@ -9,7 +9,7 @@ import tempfile
 import winreg
 from dataclasses import dataclass, asdict
 
-VERSION = "v1.0.8"
+VERSION = "v1.0.9"
 
 
 def get_documents_path():
