@@ -1,7 +1,7 @@
 # 🚛 ETS2 Chat Translator · 欧卡聊天翻译器
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-v1.1.0-brightgreen?style=flat-square" alt="Version">
+  <img src="https://img.shields.io/badge/version-v1.2.0-brightgreen?style=flat-square" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-blue?style=flat-square" alt="License">
   <img src="https://img.shields.io/badge/platform-Windows%2010%2F11-0078D6?style=flat-square" alt="Platform">
   <img src="https://img.shields.io/badge/python-3.10%2B-3776AB?style=flat-square&logo=python" alt="Python">
