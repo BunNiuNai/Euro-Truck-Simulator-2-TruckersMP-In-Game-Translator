@@ -27,6 +27,7 @@ def build():
         "--onefile",
         "--noconsole",
         "--name", NAME,
+        "--icon", ICON,
         "--add-data", f"{ICON};.",
         "--add-data", f"{os.path.join(PROJECT_DIR, 'prompts')};prompts",
         "--hidden-import", "httpx",
