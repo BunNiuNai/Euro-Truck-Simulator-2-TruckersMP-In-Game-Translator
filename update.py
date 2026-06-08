@@ -1,20 +1,23 @@
 """
 Auto-update: checks GitHub Releases, downloads new exe, replaces via batch script.
 """
+from __future__ import annotations
+
+import ctypes
+import json
 import os
 import sys
 import tempfile
 import threading
 from urllib.request import urlopen, urlretrieve
 from urllib.error import URLError
-import json
 
 from config import VERSION
 
 GITHUB_API = "https://api.github.com/repos/BunNiuNai/ets2-translator/releases/latest"
 
 
-def check_for_update():
+def check_for_update() -> tuple[bool, str, str]:
     """Query GitHub latest release. Returns (has_update, version, download_url) or (False, "", "")."""
     try:
         req = urlopen(GITHUB_API, timeout=10)
@@ -37,7 +40,7 @@ def check_for_update():
 
 def _version_newer(latest: str, current: str) -> bool:
     """Compare 'v1.0.8' > 'v1.0.7'."""
-    def parse(v):
+    def parse(v: str) -> tuple[int, ...]:
         v = v.strip().lstrip("v")
         parts = v.split(".")
         return tuple(int(p) for p in parts if p.isdigit())
@@ -47,7 +50,7 @@ def _version_newer(latest: str, current: str) -> bool:
         return False
 
 
-def download_update(url: str, progress_cb=None) -> str | None:
+def download_update(url: str, progress_cb: callable | None = None) -> str | None:
     """Download new exe to a temp path. Returns path on success, None on failure.
     progress_cb(percent: int) is called during download.
     """
@@ -61,9 +64,8 @@ def download_update(url: str, progress_cb=None) -> str | None:
         return None
 
 
-def _download_with_progress(url: str, dest: str, progress_cb=None):
+def _download_with_progress(url: str, dest: str, progress_cb: callable | None = None) -> None:
     """Download file with progress callback."""
-    import ctypes
     resp = urlopen(url, timeout=60)
     total = int(resp.headers.get("Content-Length", 0))
     downloaded = 0
@@ -83,7 +85,7 @@ def _download_with_progress(url: str, dest: str, progress_cb=None):
         raise OSError("Download incomplete")
 
 
-def apply_update(new_exe_path: str, own_exe_path: str):
+def apply_update(new_exe_path: str, own_exe_path: str) -> None:
     """Create and launch a batch script that replaces the running exe after exit.
     Called right before sys.exit()."""
     bat = os.path.join(tempfile.gettempdir(), "ets2_update.bat")

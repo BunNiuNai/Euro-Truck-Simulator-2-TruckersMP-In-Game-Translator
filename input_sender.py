@@ -9,7 +9,24 @@ import time
 import threading
 from datetime import datetime
 
-def _debug_log(msg: str):
+from win32_constants import (
+    INPUT_KEYBOARD, KEYEVENTF_KEYUP, KEYEVENTF_UNICODE, KEYEVENTF_SCANCODE,
+    VK_RETURN, VK_CONTROL, VK_V, VK_ESCAPE, VK_SHIFT, VK_ALT, VK_LWIN, VK_RWIN,
+    KEY_NAME_MAP, KEYBDINPUT, MOD_SHIFT, MOD_CONTROL, MOD_ALT,
+)
+
+# Debug logging — off by default
+_debug_enabled = False
+
+
+def set_debug_enabled(enabled: bool) -> None:
+    global _debug_enabled
+    _debug_enabled = enabled
+
+
+def _debug_log(msg: str) -> None:
+    if not _debug_enabled:
+        return
     try:
         log_path = os.path.join(os.environ.get("TEMP", "."), "ets2_translator_debug.log")
         with open(log_path, "a", encoding="utf-8") as f:
@@ -40,50 +57,7 @@ _kernel32.GlobalUnlock.argtypes = [ctypes.wintypes.HGLOBAL]
 _kernel32.GlobalUnlock.restype = ctypes.wintypes.BOOL
 
 
-# Win32 constants
-INPUT_KEYBOARD = 1
-KEYEVENTF_KEYUP = 0x0002
-KEYEVENTF_UNICODE = 0x0004
-VK_RETURN = 0x0D
-VK_CONTROL = 0x11
-VK_V = 0x56
-VK_ESCAPE = 0x1B
-
-# Key name to VK code mapping
-KEY_NAME_MAP = {
-    "enter": VK_RETURN,
-    "return": VK_RETURN,
-    "esc": VK_ESCAPE,
-    "escape": VK_ESCAPE,
-    "ctrl": VK_CONTROL,
-    "control": VK_CONTROL,
-    "tab": 0x09,
-    "space": 0x20,
-    "backspace": 0x08,
-    "bs": 0x08,
-    "delete": 0x2E,
-    "del": 0x2E,
-    "home": 0x24,
-    "end": 0x23,
-    "pgup": 0x21,
-    "pgdn": 0x22,
-    "left": 0x25,
-    "right": 0x27,
-    "up": 0x26,
-    "down": 0x28,
-    "insert": 0x2D,
-    "ins": 0x2D,
-}
-
-
-class KEYBDINPUT(ctypes.Structure):
-    _fields_ = [
-        ("wVk", ctypes.wintypes.WORD),
-        ("wScan", ctypes.wintypes.WORD),
-        ("dwFlags", ctypes.wintypes.DWORD),
-        ("time", ctypes.wintypes.DWORD),
-        ("dwExtraInfo", ctypes.wintypes.WPARAM),
-    ]
+# ── Win32 SendInput structs (composite, not in shared constants) ──
 
 
 class MOUSEINPUT(ctypes.Structure):
@@ -120,14 +94,7 @@ class INPUT(ctypes.Structure):
     ]
 
 
-def _vk_code(key: str) -> int:
-    """Convert a key string to virtual key code."""
-    key_lower = key.lower().strip()
-    if key_lower in KEY_NAME_MAP:
-        return KEY_NAME_MAP[key_lower]
-    if len(key_lower) == 1:
-        return ord(key_lower.upper())
-    return ord(key_lower.upper()) if key_lower else 0
+from win32_constants import vk_code as _vk_code
 
 
 def _send_key(vk: int, key_up: bool = False):
@@ -159,14 +126,8 @@ def _combo(keys: list[int], hold_sec: float = 0.05):
         _send_key(vk, key_up=True)
 
 
-# Modifier VK constants
-VK_SHIFT = 0x10
-VK_CONTROL = 0x11
-VK_ALT = 0x12
-VK_LWIN = 0x5B
-VK_RWIN = 0x5C
-
-_MOD_VK_MAP = {
+# Modifier name → VK code (uses constants imported from win32_constants)
+_MOD_VK_MAP: dict[str, int] = {
     "shift": VK_SHIFT, "shft": VK_SHIFT,
     "ctrl": VK_CONTROL, "control": VK_CONTROL,
     "alt": VK_ALT,

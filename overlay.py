@@ -3,35 +3,47 @@ Translation display window - supports two modes:
   - "standalone": normal window with title bar, resizable
   - "overlay": borderless transparent overlay with optional click-through
 """
+from __future__ import annotations
+
 import ctypes
 import os
+import re
+import threading
 import time
 import tkinter as tk
 from datetime import datetime
 from queue import Queue, Empty
 from tkinter import ttk
 
-from config import AppConfig, VERSION
+from config import AppConfig, VERSION, save_config
+from message_types import DisplayMessage, TranslationStats
+from win32_constants import (
+    GWL_EXSTYLE, GWLP_WNDPROC, WS_EX_TRANSPARENT, WS_EX_TOOLWINDOW,
+    WM_HOTKEY, HOTKEY_SEND_ID,
+    MOD_SHIFT, MOD_CONTROL, MOD_ALT,
+    VK_SHIFT, VK_CONTROL, VK_ALT,
+    SPECIAL_VK, KEY_NAME_MAP,
+    POINT, mod_vk,
+)
 
-# ---- debug log (temporary) ----
-def _debug_log(msg: str):
+# Debug logging — off by default
+_debug_enabled = False
+
+
+def set_debug_enabled(enabled: bool) -> None:
+    global _debug_enabled
+    _debug_enabled = enabled
+
+
+def _debug_log(msg: str) -> None:
+    if not _debug_enabled:
+        return
     try:
         log_path = os.path.join(os.environ.get("TEMP", "."), "ets2_translator_debug.log")
         with open(log_path, "a", encoding="utf-8") as f:
             f.write(f"{datetime.now().strftime('%H:%M:%S.%f')[:-3]} [{os.getpid()}] {msg}\n")
     except Exception:
         pass
-
-# Win32 constants
-GWL_EXSTYLE = -20
-GWLP_WNDPROC = -4
-WS_EX_TRANSPARENT = 0x00000020
-WS_EX_TOOLWINDOW = 0x00000080
-WM_HOTKEY = 0x0312
-HOTKEY_SEND_ID = 1
-MOD_SHIFT = 0x0004
-MOD_CONTROL = 0x0002
-MOD_ALT = 0x0001
 
 BG = "#000000"
 FG = "#cccccc"
@@ -280,10 +292,9 @@ class OverlayWindow:
             self.root.after_cancel(self._save_pos_after)
         self._save_pos_after = self.root.after(1000, self._do_save_position)
 
-    def _do_save_position(self):
+    def _do_save_position(self) -> None:
         self._save_pos_after = None
         self._save_position()
-        from config import save_config
         save_config(self.cfg)
 
     def _apply_mode(self):
@@ -516,7 +527,20 @@ class OverlayWindow:
         while True:
             try:
                 item = self.queue.get_nowait()
-                if isinstance(item, tuple) and len(item) >= 2:
+                if isinstance(item, DisplayMessage):
+                    translated = item.translated_text
+                    if item.baidu_fixed:
+                        translated = f"[百度优化] {translated}"
+                        baidu_count += 1
+                    self.add_message(
+                        item.player_name, item.original_text,
+                        translated, item.is_self,
+                    )
+                    self.root.deiconify()
+                    if not item.is_self:
+                        new_count += 1
+                elif isinstance(item, tuple) and len(item) >= 2:
+                    # Legacy tuple support for backward compatibility
                     msg, translated = item[0], item[1]
                     baidu_fixed = len(item) >= 3 and item[2]
                     if baidu_fixed:
@@ -548,15 +572,19 @@ class OverlayWindow:
     def _update_stats(self):
         if not self.stats_ref:
             return
-        t = self.stats_ref.get("translated", 0)
-        c = self.stats_ref.get("cached", 0)
-        s = self.stats_ref.get("self", 0)
-        total = t + c + s
-        saved = f"{int((c + s) / total * 100)}%" if total > 0 else "0%"
-        self._stat_translated.config(text=str(t))
-        self._stat_cached.config(text=str(c))
-        self._stat_self.config(text=str(s))
-        self._stat_saved.config(text=saved)
+        if isinstance(self.stats_ref, TranslationStats):
+            stats = self.stats_ref
+        else:
+            # Legacy dict support
+            stats = TranslationStats(
+                translated=self.stats_ref.get("translated", 0),
+                cached=self.stats_ref.get("cached", 0),
+                self_skipped=self.stats_ref.get("self", 0),
+            )
+        self._stat_translated.config(text=str(stats.translated))
+        self._stat_cached.config(text=str(stats.cached))
+        self._stat_self.config(text=str(stats.self_skipped))
+        self._stat_saved.config(text=stats.savings_pct())
 
     # ----- global hotkey (polling-based, no WNDPROC hook needed) -----
     def _format_hotkey(self, raw: str) -> str:
@@ -703,20 +731,6 @@ class OverlayWindow:
         self.add_message("System", "发送翻译失败", error, is_self=True)
 
     # ----- manual send hotkeys -----
-    _SPECIAL_VK = {
-        "enter": 0x0D, "return": 0x0D,
-        "esc": 0x1B, "escape": 0x1B,
-        "tab": 0x09, "space": 0x20,
-        "backspace": 0x08, "bs": 0x08,
-        "delete": 0x2E, "del": 0x2E,
-        "home": 0x24, "end": 0x23,
-        "pgup": 0x21, "pgdn": 0x22,
-        "left": 0x25, "right": 0x27, "up": 0x26, "down": 0x28,
-        "insert": 0x2D, "ins": 0x2D,
-        "f1": 0x70, "f2": 0x71, "f3": 0x72, "f4": 0x73,
-        "f5": 0x74, "f6": 0x75, "f7": 0x76, "f8": 0x77,
-        "f9": 0x78, "f10": 0x79, "f11": 0x7A, "f12": 0x7B,
-    }
 
     def _parse_hotkey_vk(self, hotkey_str: str) -> tuple[int, int]:
         """Parse hotkey string into (mods_mask, vk_code). Supports special keys."""
@@ -728,8 +742,8 @@ class OverlayWindow:
             elif p in ("ctrl", "control"): mods |= MOD_CONTROL
             elif p in ("alt"): mods |= MOD_ALT
         key = parts[-1].strip()
-        if key in self._SPECIAL_VK:
-            vk = self._SPECIAL_VK[key]
+        if key in SPECIAL_VK:
+            vk = SPECIAL_VK[key]
         elif len(key) == 1:
             vk = ord(key.upper())
         else:
@@ -738,11 +752,7 @@ class OverlayWindow:
 
     def _mod_vks(self, mods: int) -> list[int]:
         """Convert MOD_* flags to VK codes for GetAsyncKeyState."""
-        vks = []
-        if mods & MOD_SHIFT: vks.append(0x10)
-        if mods & MOD_CONTROL: vks.append(0x11)
-        if mods & MOD_ALT: vks.append(0x12)
-        return vks
+        return mod_vk(mods)
 
     def _start_manual_send_poller(self):
         """Background thread polls hotkeys: copy (detect only) and enter (mark sent)."""
@@ -839,7 +849,6 @@ class OverlayWindow:
     def hide(self):
         self._stop_hotkey_poller()
         self._save_position()
-        from config import save_config
         save_config(self.cfg)
         self.root.withdraw()
 

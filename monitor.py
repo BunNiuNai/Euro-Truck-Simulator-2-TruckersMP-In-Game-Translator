@@ -184,7 +184,10 @@ class ChatMonitor(threading.Thread):
                 self._seen.add(key)
                 if len(self._seen) > 500:
                     self._seen.clear()  # periodic cleanup to avoid unbounded growth
-                self.queue.put(msg)
+                try:
+                    self.queue.put(msg, timeout=0.1)
+                except Exception:
+                    pass  # queue full, drop oldest — consumer will catch up
         except OSError:
             pass
 

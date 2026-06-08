@@ -3,9 +3,10 @@ Build standalone .exe using PyInstaller.
 Usage: python build_exe.py
 Output: dist/ETS2_Chat_Translator.exe
 """
+import os
+import shutil
 import subprocess
 import sys
-import os
 
 PROJECT_DIR = os.path.dirname(os.path.abspath(__file__))
 MAIN = os.path.join(PROJECT_DIR, "main.py")
@@ -27,7 +28,12 @@ def build():
         "--noconsole",
         "--name", NAME,
         "--add-data", f"{ICON};.",
+        "--add-data", f"{os.path.join(PROJECT_DIR, 'prompts')};prompts",
         "--hidden-import", "httpx",
+        "--hidden-import", "message_types",
+        "--hidden-import", "win32_constants",
+        "--hidden-import", "message_display",
+        "--hidden-import", "hotkey_manager",
         "--clean",
         MAIN,
     ]
@@ -49,7 +55,6 @@ def _convert_icon():
     except Exception as e:
         print(f"[!] Could not convert icon: {e}")
         # Fallback: try to use PNG directly (PyInstaller may handle it)
-        import shutil
         shutil.copy(ICON_SRC, ICON)
 
 

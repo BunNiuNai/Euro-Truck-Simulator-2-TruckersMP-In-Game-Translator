@@ -2,9 +2,26 @@
 Minimal system tray icon using pure ctypes + Win32 API.
 Avoids pystray which is incompatible with Python 3.14 free-threading.
 """
+from __future__ import annotations
+
 import ctypes
 import threading
 from ctypes import wintypes
+
+from win32_constants import (
+    WM_USER, WM_LBUTTONDBLCLK, WM_RBUTTONUP, WM_LBUTTONUP,
+    WM_COMMAND, WM_DESTROY, WM_CLOSE,
+    NIM_ADD, NIM_MODIFY, NIM_DELETE,
+    NIF_MESSAGE, NIF_ICON, NIF_TIP, NIF_STATE, NIS_HIDDEN,
+    IMAGE_ICON, LR_LOADFROMFILE, IDI_APPLICATION,
+    MF_STRING, MF_SEPARATOR, MF_CHECKED, MF_UNCHECKED, MF_DEFAULT,
+    TPM_RIGHTBUTTON, TPM_RETURNCMD,
+    CW_USEDEFAULT, WS_OVERLAPPED, COLOR_WINDOW,
+    NOTIFYICONDATAW, ICONINFO, RECT,
+)
+
+# Project-specific constant
+WM_TRAYICON = WM_USER + 1
 
 # Win32 API bindings
 user32 = ctypes.windll.user32
@@ -22,133 +39,8 @@ user32.PostMessageW.restype = wintypes.BOOL
 user32.GetCursorPos.argtypes = [ctypes.POINTER(wintypes.POINT)]
 user32.GetCursorPos.restype = wintypes.BOOL
 
-# Constants
-WM_USER = 0x0400
-WM_TRAYICON = WM_USER + 1
-WM_LBUTTONDBLCLK = 0x0203
-WM_RBUTTONUP = 0x0205
-WM_LBUTTONUP = 0x0202
-WM_COMMAND = 0x0111
-NIM_ADD = 0
-NIM_MODIFY = 1
-NIM_DELETE = 2
-NIF_MESSAGE = 0x00000001
-NIF_ICON = 0x00000002
-NIF_TIP = 0x00000004
-NIF_STATE = 0x00000008
-NIS_HIDDEN = 0x00000001
-IMAGE_ICON = 1
-LR_LOADFROMFILE = 0x0010
-WM_DESTROY = 0x0002
-WM_CLOSE = 0x0010
-MF_STRING = 0x00000000
-MF_SEPARATOR = 0x00000800
-MF_CHECKED = 0x00000008
-MF_UNCHECKED = 0x00000000
-MF_DEFAULT = 0x00001000
-TPM_RIGHTBUTTON = 0x0002
-TPM_RETURNCMD = 0x0100
-CW_USEDEFAULT = 0x80000000
-WS_OVERLAPPED = 0x00000000
-COLOR_WINDOW = 5
-IDI_APPLICATION = 32512
-BS_PATTERN = 3
-HS_VERTICAL = 1
 
-class NOTIFYICONDATAW(ctypes.Structure):
-    _fields_ = [
-        ("cbSize", wintypes.DWORD),
-        ("hWnd", wintypes.HWND),
-        ("uID", wintypes.UINT),
-        ("uFlags", wintypes.UINT),
-        ("uCallbackMessage", wintypes.UINT),
-        ("hIcon", wintypes.HICON),
-        ("szTip", wintypes.WCHAR * 128),
-        ("dwState", wintypes.DWORD),
-        ("dwStateMask", wintypes.DWORD),
-        ("szInfo", wintypes.WCHAR * 256),
-        ("uVersion", wintypes.UINT),
-        ("szInfoTitle", wintypes.WCHAR * 64),
-        ("dwInfoFlags", wintypes.DWORD),
-        ("guidItem", wintypes.BYTE * 16),
-        ("hBalloonIcon", wintypes.HICON),
-    ]
-
-
-def _create_icon():
-    """Create a 32x32 icon programmatically using GDI (no PIL dependency)."""
-    # Create a bitmap and draw on it
-    hdc = user32.GetDC(0)
-    mem_dc = gdi32.CreateCompatibleDC(hdc)
-    bm = gdi32.CreateCompatibleBitmap(hdc, 32, 32)
-    old_bm = gdi32.SelectObject(mem_dc, bm)
-
-    # Background fill (#1e1e1e)
-    bg_brush = gdi32.CreateSolidBrush(0x1e1e1e)
-    rect = wintypes.RECT(0, 0, 32, 32)
-    ctypes.windll.user32.FillRect(mem_dc, ctypes.byref(rect), bg_brush)
-    gdi32.DeleteObject(bg_brush)
-
-    # Inner square (#569cd6)
-    inner_brush = gdi32.CreateSolidBrush(0xd69c56)  # BGR = 0xd69c56
-    inner_rect = wintypes.RECT(4, 4, 28, 28)
-    ctypes.windll.user32.FillRect(mem_dc, ctypes.byref(inner_rect), inner_brush)
-    gdi32.DeleteObject(inner_brush)
-
-    # Text "T" in white
-    gdi32.SetBkMode(mem_dc, 1)  # TRANSPARENT
-    gdi32.SetTextColor(mem_dc, 0xFFFFFF)
-    font = gdi32.CreateFontW(
-        16, 0, 0, 0, 700, 0, 0, 0, 0, 0, 0, 0, 0,
-        "Microsoft YaHei"
-    )
-    old_font = gdi32.SelectObject(mem_dc, font)
-    text_rect = wintypes.RECT(0, 6, 32, 32)
-    ctypes.windll.user32.DrawTextW(mem_dc, "T", 1, ctypes.byref(text_rect), 0x0001 | 0x0100)
-
-    gdi32.SelectObject(mem_dc, old_font)
-    gdi32.DeleteObject(font)
-
-    # Create icon from bitmap
-    bm_info = ctypes.create_string_buffer(84)  # BITMAPINFOHEADER(40) + masks(4*3=12) + color table = 56 is enough, use 84 for safety
-    # BITMAPINFOHEADER
-    ctypes.memmove(bm_info, b"\x28\x00\x00\x00", 4)  # biSize
-    ctypes.memmove(ctypes.addressof(bm_info) + 4, b"\x20\x00\x00\x00", 4)  # biWidth = 32
-    ctypes.memmove(ctypes.addressof(bm_info) + 8, b"\x40\x00\x00\x00", 4)  # biHeight = 64 (top-down DIB with double height for mask)
-    ctypes.memmove(ctypes.addressof(bm_info) + 12, b"\x01\x00", 2)  # biPlanes = 1
-    ctypes.memmove(ctypes.addressof(bm_info) + 14, b"\x20\x00", 2)  # biBitCount = 32
-
-    # Get bitmap bits
-    buf_size = 32 * 32 * 4
-    bits = ctypes.create_string_buffer(buf_size)
-    gdi32.GetBitmapBits(bm, buf_size, bits)
-
-    # Create XOR mask (top half) and AND mask (bottom half) for the icon
-    # For 32-bit: XOR mask is the color data, AND mask is all zeros
-    xor_mask = ctypes.create_string_buffer(buf_size)
-    ctypes.memmove(xor_mask, bits, buf_size)
-    and_mask = ctypes.create_string_buffer(32 * 4)  # 1 bit per pixel, 4 bytes per row
-    ctypes.memset(and_mask, 0, 32 * 4)
-
-    hicon = user32.CreateIconIndirect(
-        ctypes.c_bool(True),  # fIcon
-        0, 0,  # xHotspot, yHotspot
-        xor_mask,  # hbmMask (color)
-        and_mask,  # hbmColor (mask)
-    )
-
-    # Actually CreateIconIndirect takes a pointer to ICONINFO
-    # Let me use a different approach - just use LoadImage to create icon from bitmap data
-
-    gdi32.SelectObject(mem_dc, old_bm)
-    gdi32.DeleteObject(bm)
-    gdi32.DeleteDC(mem_dc)
-    user32.ReleaseDC(0, hdc)
-
-    return hicon
-
-
-def _create_icon_simple():
+def _create_icon_simple() -> int:
     """Create a simple 32x32 icon with GDI - returns HICON."""
     hdc = user32.GetDC(0)
     mem_dc = gdi32.CreateCompatibleDC(hdc)
@@ -159,13 +51,13 @@ def _create_icon_simple():
 
     # Fill background
     bg = gdi32.CreateSolidBrush(0x1e1e1e)  # dark bg
-    r = wintypes.RECT(0, 0, 32, 32)
+    r = RECT(0, 0, 32, 32)
     user32.FillRect(mem_dc, ctypes.byref(r), bg)
     gdi32.DeleteObject(bg)
 
     # Colored square
     inner = gdi32.CreateSolidBrush(0xd69c56)  # BGR #569cd6
-    r2 = wintypes.RECT(4, 4, 28, 28)
+    r2 = RECT(4, 4, 28, 28)
     user32.FillRect(mem_dc, ctypes.byref(r2), inner)
     gdi32.DeleteObject(inner)
 
@@ -174,7 +66,7 @@ def _create_icon_simple():
     gdi32.SetTextColor(mem_dc, 0xFFFFFF)
     font = gdi32.CreateFontW(18, 0, 0, 0, 700, 0, 0, 0, 0, 0, 0, 0, 0, "Microsoft YaHei")
     old_font = gdi32.SelectObject(mem_dc, font)
-    tr = wintypes.RECT(0, 4, 32, 32)
+    tr = RECT(0, 4, 32, 32)
     user32.DrawTextW(mem_dc, "T", 1, ctypes.byref(tr), 0x0001 | 0x0100)
     gdi32.SelectObject(mem_dc, old_font)
     gdi32.DeleteObject(font)
@@ -189,22 +81,12 @@ def _create_icon_simple():
     old_mask_bm = gdi32.SelectObject(mask_dc, mask_bm)
     # Fill with white (all bits = 1)
     white_brush = gdi32.CreateSolidBrush(0xFFFFFF)
-    mask_r = wintypes.RECT(0, 0, 32, 32)
+    mask_r = RECT(0, 0, 32, 32)
     user32.FillRect(mask_dc, ctypes.byref(mask_r), white_brush)
     gdi32.DeleteObject(white_brush)
 
     mask_bits = (wintypes.BYTE * (32 * 4))()
     gdi32.GetBitmapBits(mask_bm, ctypes.sizeof(mask_bits), mask_bits)
-
-    # Create icon
-    class ICONINFO(ctypes.Structure):
-        _fields_ = [
-            ("fIcon", wintypes.BOOL),
-            ("xHotspot", wintypes.DWORD),
-            ("yHotspot", wintypes.DWORD),
-            ("hbmMask", wintypes.HBITMAP),
-            ("hbmColor", wintypes.HBITMAP),
-        ]
 
     ii = ICONINFO()
     ii.fIcon = True
@@ -230,20 +112,20 @@ def _create_icon_simple():
 class TrayIcon:
     """Minimal system tray icon using Win32 API directly."""
 
-    def __init__(self, title: str = "ETS2 聊天翻译器"):
+    def __init__(self, title: str = "ETS2 聊天翻译器") -> None:
         self._title = title
-        self._hwnd = None
-        self._hicon = None
-        self._thread = None
+        self._hwnd: int | None = None
+        self._hicon: int | None = None
+        self._thread: threading.Thread | None = None
         self._running = False
-        self._menu_items = []  # list of (id, label, callback, is_checked_fn)
+        self._menu_items: list[dict] = []
         self._next_menu_id = 1000
-        self._default_cb = None  # default action (double-click / left-click)
+        self._default_cb: callable | None = None
 
-    def set_menu(self, items, default_cb=None):
+    def set_menu(self, items: list[dict], default_cb: callable | None = None) -> None:
         """Set the right-click menu.
 
-        items: list of dicts or tuples:
+        items: list of dicts:
             {"label": str, "callback": callable, "checked": callable|None}
             or ("---",) for separator
         default_cb: called on double-click or single left-click
@@ -265,13 +147,13 @@ class TrayIcon:
                 self._menu_items.append({"id": 0, "label": "---", "separator": True})
         self._default_cb = default_cb
 
-    def start(self):
+    def start(self) -> None:
         """Create tray icon and start message pump in background thread."""
         self._running = True
         self._thread = threading.Thread(target=self._message_loop, daemon=True)
         self._thread.start()
 
-    def stop(self):
+    def stop(self) -> None:
         """Remove tray icon and stop message pump."""
         self._running = False
         if self._hwnd:
@@ -279,7 +161,7 @@ class TrayIcon:
         if self._thread and self._thread.is_alive():
             self._thread.join(timeout=2.0)
 
-    def _wnd_proc(self, hwnd, msg, wparam, lparam):
+    def _wnd_proc(self, hwnd: int, msg: int, wparam: int, lparam: int) -> int:
         if msg == WM_TRAYICON:
             if lparam == WM_RBUTTONUP:
                 self._show_menu()
@@ -299,7 +181,7 @@ class TrayIcon:
             return 0
         return user32.DefWindowProcW(hwnd, msg, wparam, lparam)
 
-    def _message_loop(self):
+    def _message_loop(self) -> None:
         # Register window class
         wnd_proc_type = ctypes.WINFUNCTYPE(
             ctypes.c_longlong, wintypes.HWND, wintypes.UINT, wintypes.WPARAM, wintypes.LPARAM
@@ -384,7 +266,7 @@ class TrayIcon:
             user32.DestroyWindow(self._hwnd)
             self._hwnd = None
 
-    def _show_menu(self):
+    def _show_menu(self) -> None:
         if not self._menu_items:
             return
 
@@ -429,7 +311,7 @@ class TrayIcon:
 
         user32.DestroyMenu(menu)
 
-    def modify_tip(self, tip: str):
+    def modify_tip(self, tip: str) -> None:
         """Update the tooltip text."""
         if not self._hwnd:
             return

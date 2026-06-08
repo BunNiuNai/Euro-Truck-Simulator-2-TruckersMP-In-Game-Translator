@@ -36,8 +36,15 @@ import update as updater
 class App:
     def __init__(self):
         self.cfg = load_config()
-        self.raw_queue = Queue()
-        self.display_queue = Queue()
+
+        # Initialize debug logging
+        import input_sender
+        import overlay
+        input_sender.set_debug_enabled(self.cfg.debug_log)
+        overlay.set_debug_enabled(self.cfg.debug_log)
+
+        self.raw_queue = Queue(maxsize=500)
+        self.display_queue = Queue(maxsize=500)
 
         # Shared ref for auto-detected player name
         self._self_name_ref = {"name": self.cfg.player_name}
@@ -562,6 +569,14 @@ class SettingsDialog:
         self.backend_combo.bind("<<ComboboxSelected>>", self._on_backend_changed)
         r = self._row(card1, r, "Backend / 翻译后端", self.backend_combo)
 
+        self.lang_var = tk.StringVar(value=self.cfg.target_language)
+        self.lang_combo = ttk.Combobox(
+            card1, textvariable=self.lang_var,
+            values=["zh-CN", "en", "ja", "ko", "fr", "de", "es", "ru", "pt", "it"],
+            state="readonly", width=18,
+            font=("Microsoft YaHei", 10))
+        r = self._row(card1, r, "Target Language / 目标语言", self.lang_combo)
+
         # Baidu sub-card
         self.baidu_group = tk.Frame(card1, bg=self._INPUT_BG,
                                      highlightbackground=self._CARD_BORDER,
@@ -786,6 +801,7 @@ class SettingsDialog:
         self.font_spin.set(str(self.cfg.font_size))
         self.max_spin.set(str(self.cfg.max_messages))
         self.backend_var.set(self.cfg.translation_backend)
+        self.lang_var.set(self.cfg.target_language)
         self.baidu_appid_entry.insert(0, self.cfg.baidu_appid)
         self.baidu_secret_entry.insert(0, self.cfg.baidu_secret)
         self._on_backend_changed()
@@ -806,6 +822,7 @@ class SettingsDialog:
             window_mode=self.mode_var.get(),
             click_through=self.click_var.get(),
             translation_backend=self.backend_var.get(),
+            target_language=self.lang_var.get(),
             baidu_appid=self.baidu_appid_entry.get().strip(),
             baidu_secret=self.baidu_secret_entry.get().strip(),
         )
