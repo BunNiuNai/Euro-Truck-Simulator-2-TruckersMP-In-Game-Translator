@@ -22,8 +22,8 @@ from message_types import DisplayMessage, TranslationStats
 _CJK_RE = re.compile(r"[一-鿿]")
 _ALPHA_RE = re.compile(r"[a-zA-Z]")
 
-CACHE_SIZE = 200
-BATCH_WINDOW = 0.8  # seconds to wait for more messages before sending batch
+CACHE_SIZE = 1000
+BATCH_WINDOW = 0.3  # seconds to wait for more messages before sending batch
 BATCH_SEPARATOR = "\n---\n"
 
 
@@ -56,15 +56,36 @@ class Translator(threading.Thread):
         self.out_queue = out_queue
         self._stop_event = threading.Event()
         self._cache = LRUCache(CACHE_SIZE)
-        self._client = httpx.Client(timeout=30.0)
+        self._client = httpx.Client(timeout=8.0)
         self.stats = TranslationStats()
         self._msg_since_log = 0  # counter for periodic stats logging
 
     def run(self):
+        import os
+        from config import load_config, CONFIG_PATH
         batch = []
         batch_deadline = None
+        _last_config_mtime = os.path.getmtime(CONFIG_PATH) if os.path.exists(CONFIG_PATH) else 0
+        _config_check_time = time.monotonic()
 
         while not self._stop_event.is_set():
+            # Hot-reload: check config every 3 seconds
+            now = time.monotonic()
+            if now - _config_check_time > 3.0:
+                _config_check_time = now
+                try:
+                    mtime = os.path.getmtime(CONFIG_PATH)
+                    if mtime != _last_config_mtime:
+                        _last_config_mtime = mtime
+                        self.cfg = load_config()
+                        self._client.close()
+                        self._client = httpx.Client(timeout=8.0)
+                        log = get_logger()
+                        if log:
+                            log.info("SYS", "配置已热重载")
+                except OSError:
+                    pass
+
             try:
                 timeout = 0.3
                 if batch and batch_deadline:
@@ -265,7 +286,79 @@ class Translator(threading.Thread):
             if log:
                 log.info("BDU", f"百度纠错: {baidu_override_count}/{len(batch)} 条被覆盖")
 
+    def _call_provider(self, provider: dict, text: str) -> str:
+        """Call a single LLM provider. Raises exception on failure."""
+        endpoint = provider["endpoint"].strip()
+        if not endpoint.startswith(("http://", "https://")):
+            endpoint = "https://" + endpoint
+
+        payload = {
+            "model": provider["model"],
+            "messages": [
+                {"role": "system", "content": self.cfg.system_prompt},
+                {"role": "user", "content": text},
+            ],
+            "temperature": 0.2,
+            "max_tokens": 500 if BATCH_SEPARATOR not in text else 500 * text.count(BATCH_SEPARATOR) + 500,
+        }
+
+        headers = {
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {provider['api_key']}",
+        }
+
+        resp = self._client.post(endpoint, json=payload, headers=headers)
+        resp.raise_for_status()
+        data = resp.json()
+        return data["choices"][0]["message"]["content"].strip()
+
     def _call_api(self, text: str) -> str:
+        """Call providers with parallel race + serial fallback."""
+        if self._should_skip(text):
+            return text
+
+        providers = [p for p in self.cfg.llm_providers if p.get("enabled", True)]
+        if not providers:
+            return self._call_api_legacy(text)
+
+        log = get_logger()
+
+        # Round 1: Parallel race
+        errors = []
+        with ThreadPoolExecutor(max_workers=min(len(providers), 4)) as executor:
+            futures = {
+                executor.submit(self._call_provider, p, text): p["label"]
+                for p in providers
+            }
+            for future in as_completed(futures):
+                label = futures[future]
+                try:
+                    result = future.result()
+                    if log:
+                        log.info("LLM", f"竞速成功: {label}")
+                    return result
+                except Exception as e:
+                    err = self._format_error(e)
+                    errors.append(f"{label}: {err}")
+                    if log:
+                        log.warn("LLM", f"竞速失败: {label} - {err}")
+
+        # Round 2: Serial retry (180ms apart)
+        if log:
+            log.warn("LLM", f"第一轮全部失败，进入串行重试 ({len(providers)} providers)")
+        for p in providers:
+            try:
+                result = self._call_provider(p, text)
+                if log:
+                    log.info("LLM", f"重试成功: {p['label']}")
+                return result
+            except Exception:
+                time.sleep(0.18)
+
+        raise Exception(" | ".join(errors) if errors else "所有 Provider 翻译失败")
+
+    def _call_api_legacy(self, text: str) -> str:
+        """Legacy single-API fallback (used when llm_providers is empty)."""
         if self._should_skip(text):
             return text
 
@@ -332,7 +425,7 @@ def test_connection(endpoint: str, api_key: str, model: str) -> tuple:
         endpoint = "https://" + endpoint
 
     try:
-        client = httpx.Client(timeout=15.0)
+        client = httpx.Client(timeout=8.0)
         payload = {
             "model": model,
             "messages": [
@@ -390,7 +483,51 @@ def translate_to_english(cfg: AppConfig, text: str) -> str:
     if cfg.translation_backend == "baidu":
         return translate_to_english_via_baidu(cfg.baidu_appid, cfg.baidu_secret, text)
 
-    # LLM translation (used by both "llm" and "llm+baidu" backends)
+    # Use multi-provider if available
+    providers = [p for p in cfg.llm_providers if p.get("enabled", True)]
+    if providers:
+        errors = []
+        with ThreadPoolExecutor(max_workers=min(len(providers), 4)) as executor:
+            def _call_one(p):
+                ep = p["endpoint"].strip()
+                if not ep.startswith(("http://", "https://")):
+                    ep = "https://" + ep
+                payload = {
+                    "model": p["model"],
+                    "messages": [
+                        {"role": "system", "content": SEND_SYSTEM_PROMPT},
+                        {"role": "user", "content": text},
+                    ],
+                    "temperature": 0.3,
+                    "max_tokens": 300,
+                }
+                headers = {
+                    "Content-Type": "application/json",
+                    "Authorization": f"Bearer {p['api_key']}",
+                }
+                resp = httpx.post(ep, json=payload, headers=headers, timeout=8.0)
+                resp.raise_for_status()
+                data = resp.json()
+                return data["choices"][0]["message"]["content"].strip()
+
+            futures = {executor.submit(_call_one, p): p["label"] for p in providers}
+            for future in as_completed(futures):
+                try:
+                    llm_result = future.result()
+                    # Hybrid: Baidu verify
+                    if cfg.translation_backend == "llm+baidu" and cfg.baidu_appid and cfg.baidu_secret:
+                        try:
+                            baidu_result = translate_to_english_via_baidu(cfg.baidu_appid, cfg.baidu_secret, text)
+                            if _translations_differ(llm_result, baidu_result):
+                                return baidu_result
+                        except Exception:
+                            pass
+                    return llm_result
+                except Exception as e:
+                    errors.append(str(e))
+        raise Exception(" | ".join(errors) if errors else "所有 Provider 翻译失败")
+
+    # Legacy single-API fallback
     endpoint = cfg.api_endpoint.strip()
     if not endpoint.startswith(("http://", "https://")):
         endpoint = "https://" + endpoint
@@ -408,7 +545,7 @@ def translate_to_english(cfg: AppConfig, text: str) -> str:
         "Content-Type": "application/json",
         "Authorization": f"Bearer {cfg.api_key}",
     }
-    resp = httpx.post(endpoint, json=payload, headers=headers, timeout=30.0)
+    resp = httpx.post(endpoint, json=payload, headers=headers, timeout=8.0)
     resp.raise_for_status()
     data = resp.json()
     llm_result = data["choices"][0]["message"]["content"].strip()
