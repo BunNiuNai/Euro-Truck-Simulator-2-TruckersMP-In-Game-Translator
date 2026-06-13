@@ -432,7 +432,6 @@ class SettingsDialog:
     # ------------------------------------------------------------------
     def _card(self, parent, radius=10, **kw):
         """Canvas-backed card with rounded corners. Use `._inner` for child widgets."""
-        # Strip Frame-specific pack/padding options that Canvas doesn't support
         kw.pop("padx", None); kw.pop("pady", None)
         canvas = tk.Canvas(parent, bg=self._PAGE_BG, highlightthickness=0, bd=0, **kw)
         canvas._r = radius
@@ -443,20 +442,31 @@ class SettingsDialog:
         def _draw(w, h):
             r = radius
             canvas.delete("bg")
-            # 4 corner arcs
             for x, y, s in [(0, 0, 90), (w - r*2 - 1, 0, 0),
                              (0, h - r*2 - 1, 180), (w - r*2 - 1, h - r*2 - 1, 270)]:
                 canvas.create_arc(x, y, x + r*2, y + r*2, start=s, extent=90,
                                   fill=self._CARD_BG, outline="", tags="bg")
-            # 2 center rects (horizontal + vertical fill)
             canvas.create_rectangle(r, 0, w - r, h, fill=self._CARD_BG, outline="", tags="bg")
             canvas.create_rectangle(0, r, w, h - r, fill=self._CARD_BG, outline="", tags="bg")
             canvas.coords(win_id, r, r)
 
-        inner.bind("<Configure>", lambda e: (
-            canvas.configure(width=e.width + radius * 2 + 4, height=e.height + radius * 2 + 4),
-            _draw(e.width + radius * 2 + 4, e.height + radius * 2 + 4)
-        ))
+        # When inner content changes height, grow canvas vertically
+        def _on_inner_configure(e):
+            h = e.height + radius * 2 + 4
+            w = max(e.width + radius * 2 + 4, canvas.winfo_width())
+            canvas.configure(height=h)
+            _draw(w, h)
+        inner.bind("<Configure>", _on_inner_configure)
+
+        # When canvas is resized by pack/grid, resize inner frame width
+        def _on_canvas_configure(e):
+            w = e.width
+            h = max(inner.winfo_reqheight() + radius * 2 + 4, e.height)
+            canvas.configure(height=h)
+            inner.configure(width=w - radius * 2 - 4)
+            _draw(w, h)
+        canvas.bind("<Configure>", _on_canvas_configure, add="+")
+
         return canvas
 
     @staticmethod
@@ -684,34 +694,32 @@ class SettingsDialog:
             state="readonly", width=18, font=("Microsoft YaHei", 10))
         r = self._row(card_meta, r, "Target Language / 目标语言", self.lang_combo)
 
-        # Baidu sub-card
+        # Baidu sub-card (rounded)
         self._section_label(inner, "BAIDU TRANSLATE  /  百度翻译").pack(fill=tk.X, pady=(8, 8))
-        self.baidu_group = tk.Frame(inner, bg=self._INPUT_BG,
-                                     highlightbackground=self._CARD_BORDER,
-                                     highlightthickness=1)
+        self.baidu_group = self._card(inner)
         self.baidu_group.pack(fill=tk.X, pady=(0, 4))
-        self.baidu_group.columnconfigure(1, weight=1)
-        tk.Label(self.baidu_group, text="Baidu Translate",
-                 bg=self._INPUT_BG, fg=self._TEXT_SEC,
+        self.baidu_group._inner.columnconfigure(1, weight=1)
+        tk.Label(self.baidu_group._inner, text="Baidu Translate",
+                 bg=self._CARD_BG, fg=self._TEXT_SEC,
                  font=("Microsoft YaHei", 8, "bold"), anchor=tk.W).grid(
             row=0, column=0, columnspan=2, sticky=tk.W, padx=12, pady=(8, 2))
         self.baidu_appid_entry = self._entry(self.baidu_group, width=42)
         self.baidu_appid_entry.grid(row=1, column=0, columnspan=2, sticky=tk.EW,
                                      padx=12, pady=(4, 2))
-        tk.Label(self.baidu_group, text="APP ID",
-                 bg=self._INPUT_BG, fg=self._TEXT_SEC,
+        tk.Label(self.baidu_group._inner, text="APP ID",
+                 bg=self._CARD_BG, fg=self._TEXT_SEC,
                  font=("Microsoft YaHei", 8), anchor=tk.W).grid(
             row=2, column=0, sticky=tk.W, padx=12, pady=(0, 2))
         self.baidu_secret_entry = self._entry(self.baidu_group, show="*", width=42)
         self.baidu_secret_entry.grid(row=3, column=0, columnspan=2, sticky=tk.EW,
                                       padx=12, pady=(4, 2))
-        tk.Label(self.baidu_group, text="Secret / 密钥",
-                 bg=self._INPUT_BG, fg=self._TEXT_SEC,
+        tk.Label(self.baidu_group._inner, text="Secret / 密钥",
+                 bg=self._CARD_BG, fg=self._TEXT_SEC,
                  font=("Microsoft YaHei", 8), anchor=tk.W).grid(
             row=4, column=0, sticky=tk.W, padx=12, pady=(0, 2))
-        tk.Label(self.baidu_group,
+        tk.Label(self.baidu_group._inner,
                  text="免费申请  fanyi-api.baidu.com  ·  标准版每月 500 万字符",
-                 bg=self._INPUT_BG, fg=self._TEXT_SEC,
+                 bg=self._CARD_BG, fg=self._TEXT_SEC,
                  font=("Microsoft YaHei", 7)).grid(
             row=5, column=0, columnspan=2, sticky=tk.W, padx=12, pady=(2, 10))
         self._on_backend_changed()
