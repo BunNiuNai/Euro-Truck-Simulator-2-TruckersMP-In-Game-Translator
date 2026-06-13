@@ -10,7 +10,7 @@ import sys
 
 PROJECT_DIR = os.path.dirname(os.path.abspath(__file__))
 MAIN = os.path.join(PROJECT_DIR, "main.py")
-NAME = "ETS2_Chat_Translator"
+NAME = "ETS2-TruckersMP翻译器"
 ICON = os.path.join(PROJECT_DIR, "icon.ico")
 ICON_SRC = os.path.join(PROJECT_DIR, "xintubiao.png")
 
