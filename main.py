@@ -430,15 +430,43 @@ class SettingsDialog:
     # ------------------------------------------------------------------
     #  ui helpers
     # ------------------------------------------------------------------
-    def _card(self, parent, **kw):
-        """Return a white Frame that looks like a rounded card."""
-        card = tk.Frame(parent, bg=self._CARD_BG,
-                        highlightbackground=self._CARD_BORDER,
-                        highlightthickness=1, **kw)
-        return card
+    def _card(self, parent, radius=10, **kw):
+        """Canvas-backed card with rounded corners. Use `._inner` for child widgets."""
+        # Strip Frame-specific pack/padding options that Canvas doesn't support
+        kw.pop("padx", None); kw.pop("pady", None)
+        canvas = tk.Canvas(parent, bg=self._PAGE_BG, highlightthickness=0, bd=0, **kw)
+        canvas._r = radius
+        inner = tk.Frame(canvas, bg=self._CARD_BG)
+        canvas._inner = inner
+        win_id = canvas.create_window(radius, radius, window=inner, anchor=tk.NW)
+
+        def _draw(w, h):
+            r = radius
+            canvas.delete("bg")
+            # 4 corner arcs
+            for x, y, s in [(0, 0, 90), (w - r*2 - 1, 0, 0),
+                             (0, h - r*2 - 1, 180), (w - r*2 - 1, h - r*2 - 1, 270)]:
+                canvas.create_arc(x, y, x + r*2, y + r*2, start=s, extent=90,
+                                  fill=self._CARD_BG, outline="", tags="bg")
+            # 2 center rects (horizontal + vertical fill)
+            canvas.create_rectangle(r, 0, w - r, h, fill=self._CARD_BG, outline="", tags="bg")
+            canvas.create_rectangle(0, r, w, h - r, fill=self._CARD_BG, outline="", tags="bg")
+            canvas.coords(win_id, r, r)
+
+        inner.bind("<Configure>", lambda e: (
+            canvas.configure(width=e.width + radius * 2 + 4, height=e.height + radius * 2 + 4),
+            _draw(e.width + radius * 2 + 4, e.height + radius * 2 + 4)
+        ))
+        return canvas
+
+    @staticmethod
+    def _unwrap(parent):
+        """If parent is a Canvas from _card(), return its inner Frame."""
+        return getattr(parent, '_inner', parent)
 
     def _label(self, parent, text, accent=False, small=False, **kw):
         """Styled label."""
+        parent = self._unwrap(parent)
         fg = self._ACCENT if accent else self._TEXT
         fn = ("Microsoft YaHei", 9) if small else ("Microsoft YaHei", 10)
         return tk.Label(parent, text=text, bg=self._CARD_BG, fg=fg,
@@ -446,6 +474,7 @@ class SettingsDialog:
 
     def _entry(self, parent, show=None, width=48):
         """Styled flat entry."""
+        parent = self._unwrap(parent)
         e = tk.Entry(parent, font=("Microsoft YaHei", 10),
                      bg=self._INPUT_BG, fg=self._TEXT,
                      insertbackground=self._TEXT,
@@ -459,6 +488,7 @@ class SettingsDialog:
 
     def _pill_btn(self, parent, text, command, accent=True):
         """Pill-shaped label button."""
+        parent = self._unwrap(parent)
         bg = self._ACCENT if accent else "#1a2740"
         fg = "#ffffff" if accent else self._TEXT
         hov = self._ACCENT_HOVER if accent else "#1e2d4a"
@@ -472,16 +502,18 @@ class SettingsDialog:
 
     def _section_label(self, parent, text):
         """Section title with accent bar prefix."""
+        parent = self._unwrap(parent)
         lbl = tk.Label(parent, text=f"▎{text}", bg=self._PAGE_BG, fg=self._ACCENT,
                         font=("Microsoft YaHei", 9, "bold"), anchor=tk.W)
         return lbl
 
     def _row(self, card, r, label_text, widget, extra=None):
         """Place a label + widget row inside a card. Returns next row index."""
+        inner = self._unwrap(card)
         self._label(card, label_text).grid(row=r, column=0, sticky=tk.W,
                                             pady=5, padx=(16, 8))
         if extra:
-            sub = tk.Frame(card, bg=self._CARD_BG)
+            sub = tk.Frame(inner, bg=self._CARD_BG)
             sub.columnconfigure(0, weight=1)
             widget.grid(row=0, column=0, sticky=tk.EW, pady=5)
             extra.grid(row=0, column=1, sticky=tk.E, pady=5, padx=(8, 0))
@@ -634,12 +666,12 @@ class SettingsDialog:
         self._section_label(inner, "BACKEND & LANGUAGE  /  后端与语言").pack(fill=tk.X, pady=(8, 8))
         card_meta = self._card(inner, padx=16, pady=12)
         card_meta.pack(fill=tk.X, pady=(0, 4))
-        card_meta.columnconfigure(1, weight=1)
+        card_meta._inner.columnconfigure(1, weight=1)
 
         r = 0
         self.backend_var = tk.StringVar(value=self.cfg.translation_backend)
         self.backend_combo = ttk.Combobox(
-            card_meta, textvariable=self.backend_var,
+            card_meta._inner, textvariable=self.backend_var,
             values=["llm", "baidu", "llm+baidu"],
             state="readonly", width=18, font=("Microsoft YaHei", 10))
         self.backend_combo.bind("<<ComboboxSelected>>", self._on_backend_changed)
@@ -647,7 +679,7 @@ class SettingsDialog:
 
         self.lang_var = tk.StringVar(value=self.cfg.target_language)
         self.lang_combo = ttk.Combobox(
-            card_meta, textvariable=self.lang_var,
+            card_meta._inner, textvariable=self.lang_var,
             values=["zh-CN", "en", "ja", "ko", "fr", "de", "es", "ru", "pt", "it"],
             state="readonly", width=18, font=("Microsoft YaHei", 10))
         r = self._row(card_meta, r, "Target Language / 目标语言", self.lang_combo)
@@ -723,7 +755,7 @@ class SettingsDialog:
         self._section_label(inner, "HOTKEYS  /  快捷键").pack(fill=tk.X, pady=(0, 8))
         card2 = self._card(inner, padx=16, pady=12)
         card2.pack(fill=tk.X, pady=(0, 4))
-        card2.columnconfigure(1, weight=1)
+        card2._inner.columnconfigure(1, weight=1)
 
         r = 0
         r = self._row(card2, r, "Copy Hotkey / 复制", self._hotkey_capture(card2, self.cfg.copy_hotkey, "_copy_cap"))
@@ -732,7 +764,7 @@ class SettingsDialog:
 
         r = self._row(card2, r, "Focus Key / 呼出输入框", self._hotkey_capture(card2, self.cfg.send_hotkey, "_focus_cap"))
 
-        tk.Label(card2,
+        tk.Label(card2._inner,
                  text="按下组合键进行捕获",
                  bg=self._CARD_BG, fg=self._RED,
                  font=("Microsoft YaHei", 8), anchor=tk.W).grid(
@@ -766,13 +798,13 @@ class SettingsDialog:
         self._section_label(inner, "APPEARANCE  /  外观").pack(fill=tk.X, pady=(0, 8))
         card3 = self._card(inner, padx=16, pady=12)
         card3.pack(fill=tk.X, pady=(0, 4))
-        card3.columnconfigure(1, weight=1)
+        card3._inner.columnconfigure(1, weight=1)
 
         r = 0
         # Opacity row – manual layout (scale + live value label)
         self._label(card3, "Window Opacity / 窗口透明度").grid(
             row=r, column=0, sticky=tk.W, pady=5, padx=(16, 8))
-        opacity_row = tk.Frame(card3, bg=self._CARD_BG)
+        opacity_row = tk.Frame(card3._inner, bg=self._CARD_BG)
         opacity_row.columnconfigure(0, weight=1)
         self.opacity_scale = tk.Scale(opacity_row, from_=0.1, to=1.0, resolution=0.01,
                                        orient=tk.HORIZONTAL, bg=self._CARD_BG, fg=self._TEXT,
@@ -787,17 +819,17 @@ class SettingsDialog:
         opacity_row.grid(row=r, column=1, sticky=tk.EW, padx=(0, 16))
         r += 1
 
-        self.font_spin = ttk.Spinbox(card3, from_=8, to=24, width=6, font=("Microsoft YaHei", 10))
+        self.font_spin = ttk.Spinbox(card3._inner, from_=8, to=24, width=6, font=("Microsoft YaHei", 10))
         r = self._row(card3, r, "Font Size / 字体大小", self.font_spin)
 
-        self.max_spin = ttk.Spinbox(card3, from_=10, to=200, width=6, font=("Microsoft YaHei", 10))
+        self.max_spin = ttk.Spinbox(card3._inner, from_=10, to=200, width=6, font=("Microsoft YaHei", 10))
         r = self._row(card3, r, "Max Messages / 最大消息数", self.max_spin)
 
         self.name_entry = self._entry(card3)
         r = self._row(card3, r, "Game Name / 游戏 ID", self.name_entry)
 
         self.mode_var = tk.StringVar(value=self.cfg.window_mode)
-        mode_frame = tk.Frame(card3, bg=self._CARD_BG)
+        mode_frame = tk.Frame(card3._inner, bg=self._CARD_BG)
         for val, lbl in [("standalone", "Standalone / 标准"), ("overlay", "Overlay / 悬浮")]:
             rb = tk.Radiobutton(mode_frame, text=lbl, variable=self.mode_var, value=val,
                                 bg=self._CARD_BG, fg=self._TEXT,
@@ -810,7 +842,7 @@ class SettingsDialog:
         r = self._row(card3, r, "Window Mode / 窗口模式", mode_frame)
 
         self.click_var = tk.BooleanVar(value=self.cfg.click_through)
-        cb = tk.Checkbutton(card3, text="Click-through / 鼠标穿透 (仅悬浮模式)",
+        cb = tk.Checkbutton(card3._inner, text="Click-through / 鼠标穿透 (仅悬浮模式)",
                             variable=self.click_var,
                             bg=self._CARD_BG, fg=self._TEXT,
                             font=("Microsoft YaHei", 10),
@@ -916,6 +948,7 @@ class SettingsDialog:
     #  hotkey capture helper
     # ------------------------------------------------------------------
     def _hotkey_capture(self, parent, hotkey_str, attr_name):
+        parent = self._unwrap(parent)
         cap = HotkeyCapture(parent, hotkey_str)
         setattr(self, attr_name, cap)
         cap.configure(bg=self._CARD_BG)
@@ -965,10 +998,10 @@ class SettingsDialog:
         """Create a widget card for one provider."""
         card = self._card(self._provider_list_frame, padx=12, pady=8)
         card.grid(row=index, column=0, sticky="ew", pady=(0, 4))
-        card.columnconfigure(1, weight=1)
+        card._inner.columnconfigure(1, weight=1)
 
         # Header: enabled checkbox + label + buttons
-        header = tk.Frame(card, bg=self._CARD_BG)
+        header = tk.Frame(card._inner, bg=self._CARD_BG)
         header.grid(row=0, column=0, columnspan=2, sticky="ew", padx=8, pady=(4, 0))
         header.columnconfigure(1, weight=1)
 
