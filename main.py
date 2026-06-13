@@ -333,10 +333,10 @@ class HotkeyCapture(tk.Frame):
         super().__init__(parent, **kw)
         self._hotkey = hotkey_str
         self._label = tk.Label(self, text=self._fmt(hotkey_str),
-                               bg="#162033", fg="#e2e8f0", relief=tk.FLAT,
+                               bg="#2d2d30", fg="#cccccc", relief=tk.FLAT,
                                font=("Microsoft YaHei", 10), padx=12, pady=5,
                                anchor=tk.CENTER, width=14, cursor="hand2",
-                               highlightthickness=1, highlightbackground="#1e2d4a")
+                               highlightthickness=1, highlightbackground="#3e3e42")
         self._label.pack()
         self._label.bind("<Button-1>", self._start_capture)
         self._label.bind("<KeyPress>", self._on_key)
@@ -373,8 +373,8 @@ class HotkeyCapture(tk.Frame):
             hotkey = key.lower()
         self._hotkey = hotkey
         self._capturing = False
-        self._label.config(text=self._fmt(hotkey), bg="#162033", fg="#e2e8f0",
-                           highlightbackground="#1e2d4a", highlightthickness=1)
+        self._label.config(text=self._fmt(hotkey), bg="#2d2d30", fg="#cccccc",
+                           highlightbackground="#3e3e42", highlightthickness=1)
         return "break"
 
     def get(self) -> str:
@@ -382,25 +382,25 @@ class HotkeyCapture(tk.Frame):
 
     def set_hotkey(self, hotkey_str: str):
         self._hotkey = hotkey_str
-        self._label.config(text=self._fmt(hotkey_str), bg="#162033", fg="#e2e8f0")
+        self._label.config(text=self._fmt(hotkey_str), bg="#2d2d30", fg="#cccccc")
 
 
 class SettingsDialog:
-    """Configuration dialog — deep navy + bright blue accent theme."""
+    """Configuration dialog — VS Code dark theme."""
 
-    # ---- color palette (navy + white-blue) ----
-    _PAGE_BG = "#0a0e1a"        # deep navy
-    _CARD_BG = "#131b2e"        # dark blue-gray panel
-    _CARD_BORDER = "#1e2d4a"    # subtle blue border
-    _TEXT = "#e2e8f0"           # near-white text
-    _TEXT_SEC = "#64748b"       # muted slate
-    _ACCENT = "#3b82f6"         # bright blue
-    _ACCENT_HOVER = "#60a5fa"   # lighter blue hover
-    _GREEN = "#10b981"          # emerald success
-    _RED = "#ef4444"            # red danger
-    _INPUT_BG = "#0a0e1a"       # same as page bg
-    _INPUT_BORDER = "#1e2d4a"   # same as card border
-    _SEP = "#1a2740"            # separator line
+    # ---- color palette (VS Code dark) ----
+    _PAGE_BG = "#1e1e1e"        # editor bg
+    _CARD_BG = "#2d2d30"        # sidebar/pane bg
+    _CARD_BORDER = "#3e3e42"    # subtle border
+    _TEXT = "#cccccc"           # primary text
+    _TEXT_SEC = "#858585"       # muted text
+    _ACCENT = "#007acc"         # VS Code blue
+    _ACCENT_HOVER = "#1a8ad4"   # lighter blue hover
+    _GREEN = "#4ec9b0"          # green success
+    _RED = "#f44747"            # red danger
+    _INPUT_BG = "#252526"       # input bg (slightly lighter)
+    _INPUT_BORDER = "#3e3e42"   # same as card border
+    _SEP = "#3e3e42"            # separator
 
     def __init__(self, parent, cfg: AppConfig, overlay=None):
         self.cfg = cfg
@@ -499,9 +499,9 @@ class SettingsDialog:
     def _pill_btn(self, parent, text, command, accent=True):
         """Pill-shaped label button."""
         parent = self._unwrap(parent)
-        bg = self._ACCENT if accent else "#1a2740"
+        bg = self._ACCENT if accent else "#3e3e42"
         fg = "#ffffff" if accent else self._TEXT
-        hov = self._ACCENT_HOVER if accent else "#1e2d4a"
+        hov = self._ACCENT_HOVER if accent else "#525257"
         lb = tk.Label(parent, text=text, bg=bg, fg=fg,
                        font=("Microsoft YaHei", 10),
                        padx=18, pady=7, cursor="hand2")
@@ -542,36 +542,36 @@ class SettingsDialog:
         style = ttk.Style()
         style.theme_use("clam")  # custom-drawn theme, respects all color options
         style.configure("Vertical.TScrollbar",
-                        background="#131b2e", troughcolor="#0a0e1a",
-                        arrowcolor="#64748b", bordercolor="#131b2e",
-                        gripcount=0, darkcolor="#1e2d4a", lightcolor="#1e2d4a")
+                        background="#2d2d30", troughcolor="#1e1e1e",
+                        arrowcolor="#858585", bordercolor="#2d2d30",
+                        gripcount=0, darkcolor="#525257", lightcolor="#525257")
         style.map("Vertical.TScrollbar",
-                  background=[("active", "#1e2d4a"), ("pressed", "#2e3d5a")])
+                  background=[("active", "#525257"), ("pressed", "#525257")])
         style.configure("TSpinbox",
-                        fieldbackground="#0a0e1a", background="#1a2740",
-                        foreground="#e2e8f0", bordercolor="#1e2d4a",
-                        darkcolor="#1e2d4a", lightcolor="#1e2d4a",
-                        arrowcolor="#64748b", selectbackground="#2563eb",
+                        fieldbackground="#252526", background="#3e3e42",
+                        foreground="#cccccc", bordercolor="#3e3e42",
+                        darkcolor="#3e3e42", lightcolor="#3e3e42",
+                        arrowcolor="#858585", selectbackground="#007acc",
                         selectforeground="#ffffff")
         style.map("TSpinbox",
-                  fieldbackground=[("readonly", "#0a0e1a")],
-                  background=[("active", "#1e2d4a")])
+                  fieldbackground=[("readonly", "#252526")],
+                  background=[("active", "#525257")])
         style.configure("TCombobox",
-                        fieldbackground="#0a0e1a", background="#1a2740",
-                        foreground="#e2e8f0", bordercolor="#1e2d4a",
-                        darkcolor="#1e2d4a", lightcolor="#1e2d4a",
-                        arrowcolor="#64748b", selectbackground="#2563eb",
+                        fieldbackground="#252526", background="#3e3e42",
+                        foreground="#cccccc", bordercolor="#3e3e42",
+                        darkcolor="#3e3e42", lightcolor="#3e3e42",
+                        arrowcolor="#858585", selectbackground="#007acc",
                         selectforeground="#ffffff")
         style.map("TCombobox",
-                  fieldbackground=[("readonly", "#0a0e1a")],
-                  background=[("active", "#1e2d4a"), ("hover", "#1e2d4a")])
-        self.top.option_add("*TCombobox*Listbox.background", "#131b2e")
-        self.top.option_add("*TCombobox*Listbox.foreground", "#e2e8f0")
-        self.top.option_add("*TCombobox*Listbox.selectBackground", "#2563eb")
+                  fieldbackground=[("readonly", "#252526")],
+                  background=[("active", "#525257"), ("hover", "#525257")])
+        self.top.option_add("*TCombobox*Listbox.background", "#2d2d30")
+        self.top.option_add("*TCombobox*Listbox.foreground", "#cccccc")
+        self.top.option_add("*TCombobox*Listbox.selectBackground", "#007acc")
         self.top.option_add("*TCombobox*Listbox.selectForeground", "#ffffff")
         style.configure("TScrollbar",
-                        background="#131b2e", troughcolor="#0a0e1a",
-                        arrowcolor="#64748b", bordercolor="#131b2e")
+                        background="#2d2d30", troughcolor="#1e1e1e",
+                        arrowcolor="#858585", bordercolor="#2d2d30")
 
         # ---- outer layout ----
         outer = tk.Frame(self.top, bg=page_bg)
@@ -600,7 +600,7 @@ class SettingsDialog:
                            padx=16, pady=6, cursor="hand2")
             btn.pack(side=tk.LEFT, padx=(0, 2))
             btn.bind("<Button-1>", lambda e, k=key: self._switch_tab(k))
-            btn.bind("<Enter>", lambda e, b=btn: b.configure(bg="#1e2d4a", fg=self._TEXT))
+            btn.bind("<Enter>", lambda e, b=btn: b.configure(bg="#3e3e42", fg=self._TEXT))
             btn.bind("<Leave>", lambda e, b=btn, k=key: self._tab_hover_leave(b, k))
             self._tabs[key] = btn
 
@@ -817,7 +817,7 @@ class SettingsDialog:
         self.opacity_scale = tk.Scale(opacity_row, from_=0.1, to=1.0, resolution=0.01,
                                        orient=tk.HORIZONTAL, bg=self._CARD_BG, fg=self._TEXT,
                                        highlightthickness=0, bd=0, length=200,
-                                       troughcolor="#1a2740", activebackground=self._ACCENT,
+                                       troughcolor="#3e3e42", activebackground=self._ACCENT,
                                        command=self._on_opacity_change)
         self.opacity_scale.grid(row=0, column=0, sticky=tk.EW)
         self.opacity_val = tk.Label(opacity_row, text="0.80", bg=self._CARD_BG,
@@ -870,7 +870,7 @@ class SettingsDialog:
         self.log_text = tk.Text(
             frame,
             font=("Consolas", 9),
-            bg="#0a0e1a", fg="#94a3b8",
+            bg="#1e1e1e", fg="#858585",
             wrap=tk.WORD, state=tk.DISABLED,
             borderwidth=0, highlightthickness=0,
             padx=8, pady=8,
@@ -882,7 +882,7 @@ class SettingsDialog:
         vbar.grid(row=0, column=1, sticky="ns")
 
         # Color tags
-        self.log_text.tag_configure("info", foreground="#94a3b8")
+        self.log_text.tag_configure("info", foreground="#858585")
         self.log_text.tag_configure("warn", foreground="#f59e0b")
         self.log_text.tag_configure("error", foreground="#ef4444")
 
