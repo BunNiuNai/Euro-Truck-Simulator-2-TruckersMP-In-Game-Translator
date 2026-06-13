@@ -15,7 +15,7 @@ from urllib.error import URLError
 from config import VERSION
 from logger import get_logger
 
-GITHUB_API = "https://api.github.com/repos/BunNiuNai/ets2-translator/releases/latest"
+GITHUB_API = "https://api.github.com/repos/BunNiuNai/Euro-Truck-Simulator-2-TruckersMP-In-Game-Translator/releases/latest"
 
 # GitHub download mirrors for Chinese users (tried in order after direct access fails)
 _DOWNLOAD_MIRRORS = [
