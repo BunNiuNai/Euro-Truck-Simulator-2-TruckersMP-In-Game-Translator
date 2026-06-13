@@ -22,6 +22,10 @@ def _ensure_single_instance():
     window to front and exit this process. Returns True if this is the first instance."""
     ctypes.windll.kernel32.CreateMutexW(None, True, _SINGLE_MUTEX_NAME)
     if ctypes.windll.kernel32.GetLastError() == 183:  # ERROR_ALREADY_EXISTS
+        from logger import get_logger
+        log = get_logger()
+        if log:
+            log.warn("SYS", "检测到重复实例，已退出")
         # Find and restore the existing window
         hwnd = ctypes.windll.user32.FindWindowW(None, None)
         # Generic approach: just alert and exit
@@ -31,11 +35,16 @@ def _ensure_single_instance():
     return True
 from translator import Translator, test_connection, test_baidu_connection
 from config import VERSION
+from logger import init_logger, get_logger
 import update as updater
 
 class App:
     def __init__(self):
         self.cfg = load_config()
+
+        # Initialize logger
+        self._log = init_logger()
+        self._log.info("SYS", f"翻译器启动 | {VERSION} | Python {sys.version.split()[0]} | 配置: {CONFIG_PATH}")
 
         # Initialize debug logging
         import input_sender
@@ -162,6 +171,9 @@ class App:
     def _tray_click_through(self):
         self.cfg.click_through = not self.cfg.click_through
         save_config(self.cfg)
+        log = get_logger()
+        if log:
+            log.info("SYS", f"鼠标穿透: {'开' if self.cfg.click_through else '关'}")
         self.overlay.root.after(0, lambda: self.overlay._set_click_through(self.cfg.click_through))
 
     def _tray_settings(self):
@@ -181,6 +193,9 @@ class App:
         if self._shutting_down:
             return
         self._shutting_down = True
+        log = get_logger()
+        if log:
+            log.info("SYS", "翻译器关闭")
         self.overlay._save_position()
         save_config(self.cfg)
         if self.tray:
@@ -288,6 +303,9 @@ class App:
         else:
             self.cfg.window_mode = "overlay"
         save_config(self.cfg)
+        log = get_logger()
+        if log:
+            log.info("SYS", f"窗口模式切换: {self.cfg.window_mode}")
         self.overlay._apply_mode()
 
     def _open_settings(self):
@@ -512,41 +530,84 @@ class SettingsDialog:
                         background="#161b22", troughcolor="#0d1117",
                         arrowcolor="#8b949e", bordercolor="#161b22")
 
-        # ---- outer scrollable area ----
+        # ---- outer layout ----
         outer = tk.Frame(self.top, bg=page_bg)
         outer.pack(fill=tk.BOTH, expand=True)
-        outer.rowconfigure(0, weight=1)
+        outer.rowconfigure(1, weight=1)
         outer.columnconfigure(0, weight=1)
 
-        canvas = tk.Canvas(outer, bg=page_bg, highlightthickness=0, bd=0)
-        scrollbar = ttk.Scrollbar(outer, orient=tk.VERTICAL, command=canvas.yview)
+        # ---- tab bar ----
+        self._tab_bar = tk.Frame(outer, bg=page_bg, height=36)
+        self._tab_bar.grid(row=0, column=0, sticky="ew", padx=4, pady=(8, 0))
+        self._tab_bar.grid_propagate(False)
+
+        self._tabs = {}
+        self._tab_frames = {}
+        tab_names = [
+            ("api", "API 配置"),
+            ("hotkeys", "快捷键"),
+            ("appearance", "外观"),
+            ("logs", "📋 日志"),
+        ]
+        for i, (key, label) in enumerate(tab_names):
+            btn = tk.Label(self._tab_bar, text=label,
+                           bg=self._CARD_BG, fg=self._TEXT_SEC,
+                           font=("Microsoft YaHei", 10),
+                           padx=16, pady=6, cursor="hand2")
+            btn.pack(side=tk.LEFT, padx=(0, 2))
+            btn.bind("<Button-1>", lambda e, k=key: self._switch_tab(k))
+            btn.bind("<Enter>", lambda e, b=btn: b.configure(bg="#21262d", fg=self._TEXT))
+            btn.bind("<Leave>", lambda e, b=btn, k=key: self._tab_hover_leave(b, k))
+            self._tabs[key] = btn
+
+        # ---- content area ----
+        self._content_area = tk.Frame(outer, bg=page_bg)
+        self._content_area.grid(row=1, column=0, sticky="nsew")
+        self._content_area.rowconfigure(0, weight=1)
+        self._content_area.columnconfigure(0, weight=1)
+
+        # ---- build each tab's frame ----
+        self._build_api_tab()
+        self._build_hotkeys_tab()
+        self._build_appearance_tab()
+        self._build_logs_tab()
+
+        # ---- activate first tab ----
+        self._active_tab = None
+        self._switch_tab("api")
+
+    # ------------------------------------------------------------------
+    #  tab builders
+    # ------------------------------------------------------------------
+    def _build_api_tab(self):
+        frame = self._tab_frames["api"] = tk.Frame(self._content_area, bg=self._PAGE_BG)
+        frame.columnconfigure(0, weight=1)
+
+        canvas = tk.Canvas(frame, bg=self._PAGE_BG, highlightthickness=0, bd=0)
+        scrollbar = ttk.Scrollbar(frame, orient=tk.VERTICAL, command=canvas.yview)
         canvas.configure(yscrollcommand=scrollbar.set)
         canvas.grid(row=0, column=0, sticky="nsew")
         scrollbar.grid(row=0, column=1, sticky="ns")
+        frame.rowconfigure(0, weight=1)
 
-        frame = tk.Frame(canvas, bg=page_bg, padx=20, pady=16)
-        frame.columnconfigure(0, weight=1)
-        frame_id = canvas.create_window((0, 0), window=frame, anchor=tk.NW)
+        inner = tk.Frame(canvas, bg=self._PAGE_BG, padx=20, pady=16)
+        inner.columnconfigure(0, weight=1)
+        inner_id = canvas.create_window((0, 0), window=inner, anchor=tk.NW)
 
-        def _on_frame_configure(event):
+        def _on_inner_configure(event):
             canvas.configure(scrollregion=canvas.bbox("all"))
-        frame.bind("<Configure>", _on_frame_configure)
+        inner.bind("<Configure>", _on_inner_configure)
 
         def _on_canvas_configure(event):
-            canvas.itemconfig(frame_id, width=event.width)
+            canvas.itemconfig(inner_id, width=event.width)
         canvas.bind("<Configure>", _on_canvas_configure)
 
         def _on_mousewheel(event):
             canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
-        canvas.bind_all("<MouseWheel>", _on_mousewheel)
-        def _on_destroy(event):
-            canvas.unbind_all("<MouseWheel>")
-        self.top.bind("<Destroy>", _on_destroy)
 
-        # ====================  Card 1: API  ====================
-        self._section_label(frame, "TRANSLATION API  /  翻译接口").pack(
-            fill=tk.X, pady=(0, 8))
-        card1 = self._card(frame, padx=16, pady=12)
+        # Card 1: API
+        self._section_label(inner, "TRANSLATION API  /  翻译接口").pack(fill=tk.X, pady=(0, 8))
+        card1 = self._card(inner, padx=16, pady=12)
         card1.pack(fill=tk.X, pady=(0, 4))
         card1.columnconfigure(1, weight=1)
 
@@ -564,8 +625,7 @@ class SettingsDialog:
         self.backend_combo = ttk.Combobox(
             card1, textvariable=self.backend_var,
             values=["llm", "baidu", "llm+baidu"],
-            state="readonly", width=18,
-            font=("Microsoft YaHei", 10))
+            state="readonly", width=18, font=("Microsoft YaHei", 10))
         self.backend_combo.bind("<<ComboboxSelected>>", self._on_backend_changed)
         r = self._row(card1, r, "Backend / 翻译后端", self.backend_combo)
 
@@ -573,8 +633,7 @@ class SettingsDialog:
         self.lang_combo = ttk.Combobox(
             card1, textvariable=self.lang_var,
             values=["zh-CN", "en", "ja", "ko", "fr", "de", "es", "ru", "pt", "it"],
-            state="readonly", width=18,
-            font=("Microsoft YaHei", 10))
+            state="readonly", width=18, font=("Microsoft YaHei", 10))
         r = self._row(card1, r, "Target Language / 目标语言", self.lang_combo)
 
         # Baidu sub-card
@@ -609,10 +668,46 @@ class SettingsDialog:
                                padx=12, pady=(6, 12))
         self._on_backend_changed()
 
-        # ====================  Card 2: Hotkeys  ====================
-        self._section_label(frame, "HOTKEYS  /  快捷键").pack(
-            fill=tk.X, pady=(20, 8))
-        card2 = self._card(frame, padx=16, pady=12)
+        # Test button row
+        btn_row = tk.Frame(inner, bg=self._PAGE_BG)
+        btn_row.pack(fill=tk.X, pady=(24, 8))
+
+        self._test_btn = self._pill_btn(btn_row, "Test / 测试连接", self._test_connection, accent=False)
+        self._test_btn.pack(side=tk.LEFT, padx=(0, 8))
+
+        self._test_status = tk.Label(btn_row, text="", bg=self._PAGE_BG, fg=self._TEXT_SEC,
+                                      font=("Microsoft YaHei", 9), anchor=tk.W)
+        self._test_status.pack(side=tk.LEFT, padx=8, fill=tk.X, expand=True)
+
+    def _build_hotkeys_tab(self):
+        frame = self._tab_frames["hotkeys"] = tk.Frame(self._content_area, bg=self._PAGE_BG)
+        frame.columnconfigure(0, weight=1)
+
+        canvas = tk.Canvas(frame, bg=self._PAGE_BG, highlightthickness=0, bd=0)
+        scrollbar = ttk.Scrollbar(frame, orient=tk.VERTICAL, command=canvas.yview)
+        canvas.configure(yscrollcommand=scrollbar.set)
+        canvas.grid(row=0, column=0, sticky="nsew")
+        scrollbar.grid(row=0, column=1, sticky="ns")
+        frame.rowconfigure(0, weight=1)
+
+        inner = tk.Frame(canvas, bg=self._PAGE_BG, padx=20, pady=16)
+        inner.columnconfigure(0, weight=1)
+        inner_id = canvas.create_window((0, 0), window=inner, anchor=tk.NW)
+
+        def _on_inner_configure(event):
+            canvas.configure(scrollregion=canvas.bbox("all"))
+        inner.bind("<Configure>", _on_inner_configure)
+
+        def _on_canvas_configure(event):
+            canvas.itemconfig(inner_id, width=event.width)
+        canvas.bind("<Configure>", _on_canvas_configure)
+
+        def _on_mousewheel(event):
+            canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
+
+        # Card 2: Hotkeys
+        self._section_label(inner, "HOTKEYS  /  快捷键").pack(fill=tk.X, pady=(0, 8))
+        card2 = self._card(inner, padx=16, pady=12)
         card2.pack(fill=tk.X, pady=(0, 4))
         card2.columnconfigure(1, weight=1)
 
@@ -629,10 +724,43 @@ class SettingsDialog:
                  font=("Microsoft YaHei", 8), anchor=tk.W).grid(
             row=r, column=1, sticky=tk.W, padx=(0, 16), pady=(4, 12))
 
-        # ====================  Card 3: Appearance  ====================
-        self._section_label(frame, "APPEARANCE  /  外观").pack(
-            fill=tk.X, pady=(20, 8))
-        card3 = self._card(frame, padx=16, pady=12)
+        # Bottom buttons
+        btn_row = tk.Frame(inner, bg=self._PAGE_BG)
+        btn_row.pack(fill=tk.X, pady=(24, 8))
+        self._pill_btn(btn_row, "Cancel / 取消", self._on_close, accent=False).pack(
+            side=tk.RIGHT, padx=4)
+        self._pill_btn(btn_row, "Save / 保存", self._save, accent=True).pack(
+            side=tk.RIGHT, padx=4)
+
+    def _build_appearance_tab(self):
+        frame = self._tab_frames["appearance"] = tk.Frame(self._content_area, bg=self._PAGE_BG)
+        frame.columnconfigure(0, weight=1)
+
+        canvas = tk.Canvas(frame, bg=self._PAGE_BG, highlightthickness=0, bd=0)
+        scrollbar = ttk.Scrollbar(frame, orient=tk.VERTICAL, command=canvas.yview)
+        canvas.configure(yscrollcommand=scrollbar.set)
+        canvas.grid(row=0, column=0, sticky="nsew")
+        scrollbar.grid(row=0, column=1, sticky="ns")
+        frame.rowconfigure(0, weight=1)
+
+        inner = tk.Frame(canvas, bg=self._PAGE_BG, padx=20, pady=16)
+        inner.columnconfigure(0, weight=1)
+        inner_id = canvas.create_window((0, 0), window=inner, anchor=tk.NW)
+
+        def _on_inner_configure(event):
+            canvas.configure(scrollregion=canvas.bbox("all"))
+        inner.bind("<Configure>", _on_inner_configure)
+
+        def _on_canvas_configure(event):
+            canvas.itemconfig(inner_id, width=event.width)
+        canvas.bind("<Configure>", _on_canvas_configure)
+
+        def _on_mousewheel(event):
+            canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
+
+        # Card 3: Appearance
+        self._section_label(inner, "APPEARANCE  /  外观").pack(fill=tk.X, pady=(0, 8))
+        card3 = self._card(inner, padx=16, pady=12)
         card3.pack(fill=tk.X, pady=(0, 4))
         card3.columnconfigure(1, weight=1)
 
@@ -687,24 +815,102 @@ class SettingsDialog:
                             activeforeground=self._ACCENT)
         cb.grid(row=r, column=0, columnspan=2, sticky=tk.W, padx=16, pady=(4, 12))
 
-        # ====================  Bottom buttons  ====================
-        btn_row = tk.Frame(frame, bg=page_bg)
+        # Bottom buttons
+        btn_row = tk.Frame(inner, bg=self._PAGE_BG)
         btn_row.pack(fill=tk.X, pady=(24, 8))
-
-        self._test_btn = self._pill_btn(btn_row, "Test / 测试连接",
-                                         self._test_connection, accent=False)
-        self._test_btn.pack(side=tk.LEFT, padx=(0, 8))
-
-        self._test_status = tk.Label(btn_row, text="", bg=page_bg, fg=self._TEXT_SEC,
-                                      font=("Microsoft YaHei", 9), anchor=tk.W)
-        self._test_status.pack(side=tk.LEFT, padx=8, fill=tk.X, expand=True)
-
         self._pill_btn(btn_row, "Cancel / 取消", self._on_close, accent=False).pack(
             side=tk.RIGHT, padx=4)
         self._pill_btn(btn_row, "Save / 保存", self._save, accent=True).pack(
             side=tk.RIGHT, padx=4)
 
+        # Ensure opacity live value is initialized
+        self._on_opacity_change(self.cfg.window_opacity)
+
+    def _build_logs_tab(self):
+        frame = self._tab_frames["logs"] = tk.Frame(self._content_area, bg=self._PAGE_BG)
+        frame.rowconfigure(0, weight=1)
         frame.columnconfigure(0, weight=1)
+
+        self.log_text = tk.Text(
+            frame,
+            font=("Consolas", 9),
+            bg="#0d1117", fg="#8b949e",
+            wrap=tk.WORD, state=tk.DISABLED,
+            borderwidth=0, highlightthickness=0,
+            padx=8, pady=8,
+            insertbackground="#8b949e",
+        )
+        vbar = ttk.Scrollbar(frame, orient=tk.VERTICAL, command=self.log_text.yview)
+        self.log_text.configure(yscrollcommand=vbar.set)
+        self.log_text.grid(row=0, column=0, sticky="nsew")
+        vbar.grid(row=0, column=1, sticky="ns")
+
+        # Color tags
+        self.log_text.tag_configure("info", foreground="#8b949e")
+        self.log_text.tag_configure("warn", foreground="#d29922")
+        self.log_text.tag_configure("error", foreground="#f85149")
+
+        # Mousewheel scroll
+        self.log_text.bind("<MouseWheel>", self._on_log_mousewheel)
+
+        # Bottom buttons
+        btn_row = tk.Frame(frame, bg=self._PAGE_BG)
+        btn_row.grid(row=1, column=0, columnspan=2, sticky="ew", pady=(8, 4), padx=8)
+
+        self._pill_btn(btn_row, "📂 打开日志文件夹", self._open_log_dir, accent=False).pack(side=tk.LEFT)
+        self._pill_btn(btn_row, "🔄 刷新", self._refresh_logs, accent=False).pack(side=tk.LEFT, padx=(8, 0))
+        self._pill_btn(btn_row, "Cancel / 取消", self._on_close, accent=False).pack(side=tk.RIGHT, padx=4)
+        self._pill_btn(btn_row, "Save / 保存", self._save, accent=True).pack(side=tk.RIGHT, padx=4)
+
+    def _switch_tab(self, key: str) -> None:
+        """Switch to the given tab."""
+        if self._active_tab == key:
+            return
+        # Deactivate all
+        for k, btn in self._tabs.items():
+            btn.configure(bg=self._CARD_BG, fg=self._TEXT_SEC)
+        for f in self._tab_frames.values():
+            f.grid_remove()
+        # Activate selected
+        self._tabs[key].configure(bg="#1f6feb", fg="#ffffff")
+        self._tab_frames[key].grid(row=0, column=0, sticky="nsew")
+        self._active_tab = key
+        if key == "logs":
+            self._refresh_logs()
+
+    def _tab_hover_leave(self, btn: tk.Label, key: str) -> None:
+        if self._active_tab == key:
+            btn.configure(bg="#1f6feb", fg="#ffffff")
+        else:
+            btn.configure(bg=self._CARD_BG, fg=self._TEXT_SEC)
+
+    def _refresh_logs(self) -> None:
+        if not hasattr(self, 'log_text'):
+            return
+        log = get_logger()
+        lines = log.get_recent() if log else []
+        self.log_text.configure(state=tk.NORMAL)
+        self.log_text.delete("1.0", tk.END)
+        for line in lines:
+            if "[ERROR]" in line:
+                self.log_text.insert(tk.END, line + "\n", "error")
+            elif "[WARN]" in line:
+                self.log_text.insert(tk.END, line + "\n", "warn")
+            else:
+                self.log_text.insert(tk.END, line + "\n", "info")
+        self.log_text.configure(state=tk.DISABLED)
+        self.log_text.see(tk.END)
+
+    def _open_log_dir(self) -> None:
+        import os
+        log = get_logger()
+        if log:
+            log_dir = log.get_log_dir()
+            if os.path.isdir(log_dir):
+                os.startfile(log_dir)
+
+    def _on_log_mousewheel(self, event) -> None:
+        self.log_text.yview_scroll(int(-1 * (event.delta / 120)), "units")
 
     # ------------------------------------------------------------------
     #  hotkey capture helper

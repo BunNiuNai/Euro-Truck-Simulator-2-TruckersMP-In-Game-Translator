@@ -13,6 +13,7 @@ from urllib.request import urlopen, urlretrieve
 from urllib.error import URLError
 
 from config import VERSION
+from logger import get_logger
 
 GITHUB_API = "https://api.github.com/repos/BunNiuNai/ets2-translator/releases/latest"
 
@@ -32,9 +33,19 @@ def check_for_update() -> tuple[bool, str, str]:
                 if asset.get("name", "").endswith(".exe"):
                     url = asset.get("browser_download_url", "")
                     break
+            log = get_logger()
+            if log:
+                log.info("UPD", f"发现新版本: {latest}")
             return True, latest, url
+        # No update available
+        log = get_logger()
+        if log:
+            log.info("UPD", f"已是最新版本: {VERSION}")
         return False, latest, ""
     except (URLError, OSError, json.JSONDecodeError, KeyError):
+        log = get_logger()
+        if log:
+            log.warn("UPD", "检查更新失败: 无法连接到 GitHub")
         return False, "", ""
 
 
@@ -56,11 +67,19 @@ def download_update(url: str, progress_cb: callable | None = None) -> str | None
     """
     try:
         tmp = tempfile.mktemp(suffix=".exe", prefix="ets2_update_")
+        log = get_logger()
+        if log:
+            log.info("UPD", f"开始下载更新")
         _download_with_progress(url, tmp, progress_cb)
+        if log:
+            log.info("UPD", "更新下载完成")
         return tmp
     except (URLError, OSError) as e:
         if progress_cb:
             progress_cb(-1)
+        log = get_logger()
+        if log:
+            log.error("UPD", f"下载失败: {e}")
         return None
 
 
@@ -88,6 +107,9 @@ def _download_with_progress(url: str, dest: str, progress_cb: callable | None = 
 def apply_update(new_exe_path: str, own_exe_path: str) -> None:
     """Create and launch a batch script that replaces the running exe after exit.
     Called right before sys.exit()."""
+    log = get_logger()
+    if log:
+        log.info("UPD", f"安装更新: {os.path.basename(new_exe_path)} → {os.path.basename(own_exe_path)}")
     bat = os.path.join(tempfile.gettempdir(), "ets2_update.bat")
 
     with open(bat, "w", encoding="ascii") as f:
