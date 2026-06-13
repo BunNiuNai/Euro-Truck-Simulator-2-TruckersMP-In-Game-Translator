@@ -397,7 +397,9 @@ class App:
                     if os.path.isdir(log_dir):
                         os.startfile(log_dir)
 
-        ui_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), "settings_ui")
+        # Resolve settings_ui path (supports PyInstaller exe via sys._MEIPASS)
+        base = getattr(sys, '_MEIPASS', os.path.dirname(os.path.abspath(__file__)))
+        ui_dir = os.path.join(base, "settings_ui")
         w = webview.create_window(
             "ETS2 聊天翻译器 — 设置",
             f"file:///{ui_dir}/index.html",
