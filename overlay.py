@@ -70,6 +70,7 @@ class OverlayWindow:
         self._setup_ui()
         self._apply_mode()
         self._restore_or_center()
+        self._set_rounded_corners()
         self.root.protocol("WM_DELETE_WINDOW", self.hide)
         self.root.after(1000, lambda: setattr(self, "_ready", True))
 
@@ -269,6 +270,29 @@ class OverlayWindow:
             y = (sh - h) // 2
             self.root.geometry(f"{w}x{h}+{x}+{y}")
 
+    def _set_rounded_corners(self):
+        """Apply rounded corners to the window via DWM (Win11) or SetWindowRgn (Win10/overlay)."""
+        try:
+            hwnd = self.root.winfo_id()
+            if self.cfg.window_mode != "overlay":
+                # Standard mode: try DWM (Win11 native rounded corners)
+                DWMWA_WINDOW_CORNER_PREFERENCE = 33
+                DWMWCP_ROUND = 2
+                ctypes.windll.dwmapi.DwmSetWindowAttribute(
+                    hwnd, DWMWA_WINDOW_CORNER_PREFERENCE,
+                    ctypes.byref(ctypes.c_int(DWMWCP_ROUND)), ctypes.sizeof(ctypes.c_int))
+            # Overlay mode / Win10 fallback: SetWindowRgn
+            if self.cfg.window_mode == "overlay":
+                self.root.update_idletasks()
+                w = self.root.winfo_width()
+                h = self.root.winfo_height()
+                if w > 1 and h > 1:
+                    r = 16  # corner radius
+                    hrgn = ctypes.windll.gdi32.CreateRoundRectRgn(0, 0, w + 1, h + 1, r, r)
+                    ctypes.windll.user32.SetWindowRgn(hwnd, hrgn, True)
+        except Exception:
+            pass
+
     def _save_position(self):
         """Save window position and size to config."""
         if self.root.state() == "withdrawn":
@@ -330,6 +354,7 @@ class OverlayWindow:
 
         if was_visible:
             self.root.deiconify()
+        self.root.after(100, self._set_rounded_corners)
 
     def _set_click_through(self, enable: bool):
         hwnd = self.root.winfo_id()
