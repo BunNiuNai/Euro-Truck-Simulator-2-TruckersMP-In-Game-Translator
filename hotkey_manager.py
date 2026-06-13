@@ -1,12 +1,13 @@
 """
-Hotkey manager — global hotkey polling, manual send hotkey detection.
-Extracted from overlay.py for modularity.
+Hotkey manager — system-level RegisterHotKey via Win32 message window
+for the summon hotkey. Manual send (copy/enter) hotkeys still use polling.
 """
 from __future__ import annotations
 
 import ctypes
 import threading
 import tkinter as tk
+from ctypes import wintypes
 
 from win32_constants import (
     MOD_SHIFT, MOD_CONTROL, MOD_ALT,
@@ -14,16 +15,27 @@ from win32_constants import (
     SPECIAL_VK,
 )
 
+user32 = ctypes.windll.user32
+kernel32 = ctypes.windll.kernel32
+
+WM_HOTKEY = 0x0312
+WM_DESTROY = 0x0002
+WM_CLOSE = 0x0010
+
+MOD_VK_MAP = {MOD_SHIFT: VK_SHIFT, MOD_CONTROL: VK_CONTROL, MOD_ALT: VK_ALT}
+
 
 class HotkeyManager:
-    """Manages global hotkey polling for summoning the translator and detecting manual send keys."""
+    """Manages system-level hotkey via RegisterHotKey and a hidden message window."""
 
     def __init__(self, root: tk.Tk, cfg, focus_callback: callable):
         self.root = root
         self.cfg = cfg
         self._focus_callback = focus_callback
-        self._hotkey_active = False
-        self._manual_poller_active = False
+        self._hwnd: int | None = None
+        self._hotkey_id = 1
+        self._thread: threading.Thread | None = None
+        self._running = False
         self.send_hint: tk.Label | None = None
         self._pending_english = ""
         self._pending_chinese = ""
@@ -79,60 +91,119 @@ class HotkeyManager:
             vk = 0
         return mods, vk
 
-    @staticmethod
-    def _mod_vks(mods: int) -> list[int]:
-        """Convert MOD_* flags to VK codes for GetAsyncKeyState."""
-        vks: list[int] = []
-        if mods & MOD_SHIFT: vks.append(VK_SHIFT)
-        if mods & MOD_CONTROL: vks.append(VK_CONTROL)
-        if mods & MOD_ALT: vks.append(VK_ALT)
-        return vks
+    # ── System-level hotkey via RegisterHotKey ──
 
-    # ── Global hotkey poller (summon input) ──
+    def _wnd_proc(self, hwnd: int, msg: int, wparam: int, lparam: int) -> int:
+        if msg == WM_HOTKEY:
+            self.root.after(0, self._focus_callback)
+            return 0
+        elif msg == WM_DESTROY:
+            user32.PostQuitMessage(0)
+            return 0
+        return user32.DefWindowProcW(hwnd, msg, wparam, lparam)
 
-    def start(self) -> None:
-        """Start background thread polling for the send hotkey."""
-        mods, vk = self._parse_hotkey(self.cfg.send_hotkey)
-        if vk == 0:
+    def _message_loop(self) -> None:
+        """Thread entry: create hidden window, register hotkey, run message loop."""
+        hinst = kernel32.GetModuleHandleW(None)
+        class_name = "ETS2HotkeyWindow"
+
+        wnd_proc_type = ctypes.WINFUNCTYPE(
+            ctypes.c_longlong, wintypes.HWND, wintypes.UINT, wintypes.WPARAM, wintypes.LPARAM
+        )
+        self._wnd_proc_ref = wnd_proc_type(self._wnd_proc)
+
+        class WNDCLASSEXW(ctypes.Structure):
+            _fields_ = [
+                ("cbSize", wintypes.UINT),
+                ("style", wintypes.UINT),
+                ("lpfnWndProc", wintypes.LPVOID),
+                ("cbClsExtra", ctypes.c_int),
+                ("cbWndExtra", ctypes.c_int),
+                ("hInstance", wintypes.HINSTANCE),
+                ("hIcon", wintypes.HICON),
+                ("hCursor", wintypes.HCURSOR),
+                ("hbrBackground", wintypes.HBRUSH),
+                ("lpszMenuName", wintypes.LPCWSTR),
+                ("lpszClassName", wintypes.LPCWSTR),
+                ("hIconSm", wintypes.HICON),
+            ]
+
+        wc = WNDCLASSEXW()
+        wc.cbSize = ctypes.sizeof(WNDCLASSEXW)
+        wc.lpfnWndProc = ctypes.cast(self._wnd_proc_ref, wintypes.LPVOID)
+        wc.hInstance = hinst
+        wc.lpszClassName = class_name
+
+        atom = user32.RegisterClassExW(ctypes.byref(wc))
+        if not atom:
             return
 
-        self._hotkey_active = True
+        self._hwnd = user32.CreateWindowExW(
+            0, class_name, "ETS2Hotkey",
+            0, 0, 0, 0, 0,
+            wintypes.HWND(-3), 0, hinst, 0,
+        )
+        if not self._hwnd:
+            return
 
-        def poller():
-            mod_vks = self._mod_vks(mods)
+        mods, vk = self._parse_hotkey(self.cfg.send_hotkey)
+        if vk != 0:
+            ok = user32.RegisterHotKey(self._hwnd, self._hotkey_id, mods, vk)
+            if not ok:
+                # Some combos reserved by OS — fall back to alt+key
+                if mods & MOD_SHIFT:
+                    mods = (mods & ~MOD_SHIFT) | MOD_ALT
+                    ok = user32.RegisterHotKey(self._hwnd, self._hotkey_id, mods, vk)
+                if not ok:
+                    user32.DestroyWindow(self._hwnd)
+                    self._hwnd = None
+                    return
 
-            def held(vk_code):
-                return ctypes.windll.user32.GetAsyncKeyState(vk_code) & 0x8000
+        msg = wintypes.MSG()
+        while self._running:
+            ret = user32.GetMessageW(ctypes.byref(msg), 0, 0, 0)
+            if ret <= 0:
+                break
+            user32.TranslateMessage(ctypes.byref(msg))
+            user32.DispatchMessageW(ctypes.byref(msg))
 
-            was_down = all(held(mv) for mv in mod_vks) and held(vk)
-            while self._hotkey_active:
-                mods_ok = all(held(mv) for mv in mod_vks) if mod_vks else True
-                key_down = held(vk)
-                combo = mods_ok and key_down
+        if self._hwnd:
+            user32.UnregisterHotKey(self._hwnd, self._hotkey_id)
+            user32.DestroyWindow(self._hwnd)
+            self._hwnd = None
 
-                if combo and not was_down:
-                    self.root.after(0, self._focus_callback)
-                was_down = combo
-                threading.Event().wait(0.05)
-
-        t = threading.Thread(target=poller, daemon=True)
-        t.start()
+    def start(self) -> None:
+        if self._running:
+            return
+        self._running = True
+        self._thread = threading.Thread(target=self._message_loop, daemon=True)
+        self._thread.start()
 
     def stop(self) -> None:
-        """Stop the global hotkey poller."""
-        self._hotkey_active = False
+        self._running = False
+        if self._hwnd:
+            user32.PostMessageW(self._hwnd, WM_CLOSE, 0, 0)
+        if self._thread and self._thread.is_alive():
+            self._thread.join(timeout=2.0)
 
     def update_send_hotkey(self, new_hotkey: str) -> None:
-        """Called when user changes the hotkey in settings."""
-        self._hotkey_active = False  # stop current poller
+        """Re-register hotkey after user changes the combo."""
+        self._running = False
+        if self._hwnd:
+            user32.UnregisterHotKey(self._hwnd, self._hotkey_id)
+            user32.PostMessageW(self._hwnd, WM_CLOSE, 0, 0)
+        if self._thread and self._thread.is_alive():
+            self._thread.join(timeout=2.0)
+
         self.cfg.send_hotkey = new_hotkey
         self.reset_hint()
         self.start()
 
-    # ── Manual send hotkey poller ──
+    # ── Manual send hotkey poller (GetAsyncKeyState — unchanged) ──
+
+    _manual_poller_active: bool = False
 
     def start_manual_send(self, pending_chinese: str, pending_english: str) -> None:
-        """Start background thread polling copy/enter hotkeys."""
         if self._manual_poller_active:
             return
         self._manual_poller_active = True
@@ -148,8 +219,8 @@ class HotkeyManager:
         def check(mods, vk):
             if vk == 0:
                 return False
-            mv = self._mod_vks(mods)
-            return all(held(mv) for mv in mv) and held(vk)
+            mv = [MOD_VK_MAP[m] for m in [MOD_SHIFT, MOD_CONTROL, MOD_ALT] if mods & m]
+            return all(held(m) for m in mv) and held(vk)
 
         was_copy = check(copy_mods, copy_vk)
         was_enter = check(enter_mods, enter_vk)
@@ -159,12 +230,10 @@ class HotkeyManager:
             while self._manual_poller_active:
                 cd = check(copy_mods, copy_vk)
                 ed = check(enter_mods, enter_vk)
-
                 if cd and not was_copy:
                     self.root.after(0, self._on_copy)
                 if ed and not was_enter:
                     self.root.after(0, self._on_enter)
-
                 was_copy, was_enter = cd, ed
                 threading.Event().wait(0.05)
 
@@ -174,7 +243,7 @@ class HotkeyManager:
     def stop_manual_send(self) -> None:
         self._manual_poller_active = False
 
-    # Callback stubs — set these after construction
+    # Callback stubs
     on_copy: callable = lambda self: None
     on_enter: callable = lambda self: None
 
