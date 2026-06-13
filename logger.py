@@ -13,7 +13,7 @@ MAX_LOG_FILES = 7
 MAX_FILE_SIZE = 2 * 1024 * 1024  # 2MB
 BUFFER_SIZE = 500
 
-_LEVEL_LABEL = {"INFO": "INFO ", "WARN": "WARN ", "ERROR": "ERROR"}
+_LEVEL_LABEL = {"INFO": "INFO", "WARN": "WARN", "ERROR": "ERROR"}
 
 
 def _get_default_log_dir() -> str:
@@ -33,6 +33,7 @@ class Logger:
         self._buffer: list[str] = []
         self._buffer_size = buffer_size
         self._lock = threading.Lock()
+        self._file = None
         os.makedirs(self._log_dir, exist_ok=True)
         self._cleanup_old_logs()
 
@@ -79,7 +80,7 @@ class Logger:
 
     def _log(self, tag: str, level: str, message: str) -> None:
         ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        line = f"{ts} [{tag}] [{_LEVEL_LABEL[level].strip()}] {message}"
+        line = f"{ts} [{tag}] [{_LEVEL_LABEL[level]}] {message}"
 
         with self._lock:
             self._buffer.append(line)
@@ -88,13 +89,25 @@ class Logger:
 
             self._rotate_if_needed()
             try:
-                with open(self._current_log_path(), "a", encoding="utf-8") as f:
-                    f.write(line + "\n")
+                if self._file is None:
+                    self._file = open(self._current_log_path(), "a", encoding="utf-8")
+                self._file.write(line + "\n")
+                self._file.flush()
             except OSError:
                 pass
 
     def info(self, tag: str, message: str) -> None:
         self._log(tag, "INFO", message)
+
+    def close(self) -> None:
+        """Close the persistent file handle if open."""
+        with self._lock:
+            if self._file is not None:
+                try:
+                    self._file.close()
+                except OSError:
+                    pass
+                self._file = None
 
     def warn(self, tag: str, message: str) -> None:
         self._log(tag, "WARN", message)
@@ -106,6 +119,8 @@ class Logger:
 
     def get_recent(self, n: int | None = None) -> list[str]:
         """Return recent log lines from the in-memory buffer (newest last)."""
+        if n is not None and n <= 0:
+            return []
         with self._lock:
             lines = self._buffer.copy()
         if n is not None:
