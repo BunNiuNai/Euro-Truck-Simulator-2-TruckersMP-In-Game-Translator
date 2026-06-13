@@ -12,7 +12,7 @@ import winreg
 from ctypes import wintypes
 from dataclasses import dataclass, asdict, field
 
-VERSION = "v1.2.3"
+VERSION = "v1.2.4"
 
 # ── Windows DPAPI for encrypting sensitive config fields ──
 

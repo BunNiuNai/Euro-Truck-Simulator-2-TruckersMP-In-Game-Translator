@@ -614,6 +614,7 @@ class SettingsDialog:
 
         def _on_mousewheel(event):
             canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
+        canvas.bind("<MouseWheel>", _on_mousewheel)
 
         # Section: provider list
         self._section_label(inner, "LLM PROVIDERS  /  语言模型提供商").pack(fill=tk.X, pady=(0, 8))
@@ -717,6 +718,7 @@ class SettingsDialog:
 
         def _on_mousewheel(event):
             canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
+        canvas.bind("<MouseWheel>", _on_mousewheel)
 
         # Card 2: Hotkeys
         self._section_label(inner, "HOTKEYS  /  快捷键").pack(fill=tk.X, pady=(0, 8))
@@ -762,6 +764,7 @@ class SettingsDialog:
 
         def _on_mousewheel(event):
             canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
+        canvas.bind("<MouseWheel>", _on_mousewheel)
 
         # Card 3: Appearance
         self._section_label(inner, "APPEARANCE  /  外观").pack(fill=tk.X, pady=(0, 8))
