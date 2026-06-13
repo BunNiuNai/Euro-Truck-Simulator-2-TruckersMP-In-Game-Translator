@@ -37,6 +37,13 @@ CHAT_LINE_RE = re.compile(
     r"(?P<text>.+)$"
 )
 
+# System messages — no player/ID, e.g. [System] [12:34:56] Server restarting...
+SYSTEM_LINE_RE = re.compile(
+    r"^\[(?P<channel>.+?)\]\s+"
+    r"\[(?P<time>\d{2}:\d{2}:\d{2})\]\s+"
+    r"(?P<text>.+)$"
+)
+
 
 @dataclass
 class ChatMessage:
@@ -79,16 +86,25 @@ def parse_line(line: str, self_name: str | None = None) -> ChatMessage | None:
     When self_name is provided, messages from that player get is_self=True.
     """
     m = CHAT_LINE_RE.match(line.strip())
-    if not m:
-        return None
-    player = m.group("player")
-    is_self = self_name is not None and player == self_name
-    return ChatMessage(
-        timestamp=m.group("time"),
-        player_name=player,
-        text=m.group("text"),
-        is_self=is_self,
-    )
+    if m:
+        player = m.group("player")
+        is_self = self_name is not None and player == self_name
+        return ChatMessage(
+            timestamp=m.group("time"),
+            player_name=player,
+            text=m.group("text"),
+            is_self=is_self,
+        )
+    # Fallback: system message without player/ID
+    sm = SYSTEM_LINE_RE.match(line.strip())
+    if sm:
+        return ChatMessage(
+            timestamp=sm.group("time"),
+            player_name=f"[{sm.group('channel')}]",
+            text=sm.group("text"),
+            is_self=False,
+        )
+    return None
 
 
 def log_dir_status():
