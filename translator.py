@@ -16,6 +16,7 @@ from queue import Queue
 import httpx
 
 from config import AppConfig, get_send_prompt
+from logger import get_logger
 from message_types import DisplayMessage, TranslationStats
 
 _CJK_RE = re.compile(r"[一-鿿]")
@@ -57,6 +58,7 @@ class Translator(threading.Thread):
         self._cache = LRUCache(CACHE_SIZE)
         self._client = httpx.Client(timeout=30.0)
         self.stats = TranslationStats()
+        self._msg_since_log = 0  # counter for periodic stats logging
 
     def run(self):
         batch = []
@@ -120,6 +122,16 @@ class Translator(threading.Thread):
         if not batch:
             return
         self.stats.translated += len(batch)
+        self._msg_since_log += len(batch)
+
+        # Log stats every 50 messages
+        if self._msg_since_log >= 50:
+            self._msg_since_log = 0
+            log = get_logger()
+            if log:
+                log.info("LLM", f"翻译统计: 翻译={self.stats.translated} 缓存={self.stats.cached} "
+                        f"跳过={self.stats.self_skipped} 节省={self.stats.savings_pct()}")
+
         if self.cfg.translation_backend == "baidu":
             self._flush_baidu(batch)
         elif self.cfg.translation_backend == "llm+baidu":
@@ -152,6 +164,9 @@ class Translator(threading.Thread):
                     ))
         except Exception as e:
             err_msg = self._format_error(e)
+            log = get_logger()
+            if log:
+                log.error("LLM", f"翻译失败: {err_msg}")
             for msg in batch:
                 self.out_queue.put(DisplayMessage(
                     player_name=msg.player_name,
@@ -172,6 +187,9 @@ class Translator(threading.Thread):
                     translated_text=translated,
                 ))
             except Exception as e:
+                log = get_logger()
+                if log:
+                    log.error("BDU", f"百度翻译失败: {e}")
                 self.out_queue.put(DisplayMessage(
                     player_name=msg.player_name,
                     original_text=msg.text,
@@ -220,10 +238,12 @@ class Translator(threading.Thread):
                     pass  # Baidu failed for this text, will fall back to LLM
 
         # Step 3: compare and emit
+        baidu_override_count = 0
         for msg in batch:
             llm_trans = llm_results.get(msg.text, msg.text)
             baidu_trans = baidu_results.get(msg.text)
             if baidu_trans is not None and _translations_differ(llm_trans, baidu_trans):
+                baidu_override_count += 1
                 # Baidu overrides LLM
                 self._cache.put(msg.text, baidu_trans)
                 self.out_queue.put(DisplayMessage(
@@ -239,6 +259,11 @@ class Translator(threading.Thread):
                     original_text=msg.text,
                     translated_text=llm_trans,
                 ))
+
+        if baidu_override_count > 0:
+            log = get_logger()
+            if log:
+                log.info("BDU", f"百度纠错: {baidu_override_count}/{len(batch)} 条被覆盖")
 
     def _call_api(self, text: str) -> str:
         if self._should_skip(text):
@@ -325,8 +350,14 @@ def test_connection(endpoint: str, api_key: str, model: str) -> tuple:
         resp.raise_for_status()
         data = resp.json()
         content = data["choices"][0]["message"]["content"].strip()
+        log = get_logger()
+        if log:
+            log.info("LLM", f"连通测试 OK | {model} @ {endpoint}")
         return True, f"连通成功 — {content[:60]}"
     except httpx.ConnectError:
+        log = get_logger()
+        if log:
+            log.error("LLM", "连通测试失败: 无法连接到 API 服务器")
         return False, "无法连接到 API 服务器，请检查地址和网络"
     except httpx.TimeoutException:
         return False, "连接超时，请检查网络或 API 地址是否可访问"
@@ -438,8 +469,14 @@ def test_baidu_connection(appid: str, secret: str) -> tuple:
         return False, "请填写百度翻译 APP ID 和密钥"
     try:
         result = translate_via_baidu(appid, secret, "Hello")
+        log = get_logger()
+        if log:
+            log.info("BDU", "连通测试 OK | 百度翻译 API 标准版")
         return True, f"连通成功 — {result[:60]}"
     except Exception as e:
+        log = get_logger()
+        if log:
+            log.error("BDU", f"连通测试失败: {e}")
         return False, f"连通失败: {e}"
 
 
