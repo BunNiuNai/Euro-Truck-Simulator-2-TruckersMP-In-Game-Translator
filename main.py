@@ -458,7 +458,7 @@ class SettingsDialog:
             _draw(w, h)
         inner.bind("<Configure>", _on_inner_configure)
 
-        # When canvas is resized by pack/grid, resize inner frame width
+        # When canvas is resized by pack/grid, resize inner frame and re-layout children
         def _on_canvas_configure(e):
             w = e.width
             h = max(inner.winfo_reqheight() + radius * 2 + 4, e.height)
@@ -482,7 +482,7 @@ class SettingsDialog:
         return tk.Label(parent, text=text, bg=self._CARD_BG, fg=fg,
                         font=fn, anchor=tk.W, **kw)
 
-    def _entry(self, parent, show=None, width=48):
+    def _entry(self, parent, show=None, width=36):
         """Styled flat entry."""
         parent = self._unwrap(parent)
         e = tk.Entry(parent, font=("Microsoft YaHei", 10),
