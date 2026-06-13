@@ -10,7 +10,7 @@ import os
 import tempfile
 import winreg
 from ctypes import wintypes
-from dataclasses import dataclass, asdict
+from dataclasses import dataclass, asdict, field
 
 VERSION = "v1.2.1"
 
@@ -186,6 +186,16 @@ DEFAULT_SYSTEM_PROMPT = get_receive_prompt()
 
 
 @dataclass
+class ProviderConfig:
+    """A single LLM provider configuration."""
+    label: str = ""
+    endpoint: str = ""
+    api_key: str = ""
+    model: str = ""
+    enabled: bool = True
+
+
+@dataclass
 class AppConfig:
     api_endpoint: str = ""
     api_key: str = ""
@@ -213,6 +223,7 @@ class AppConfig:
     baidu_appid: str = ""   # Baidu Translate APP ID
     baidu_secret: str = ""  # Baidu Translate secret key
     debug_log: bool = False  # enable debug logging to %TEMP%
+    llm_providers: list[dict] = field(default_factory=list)  # NEW: list of provider dicts
 
 
 def ensure_config_dir():
@@ -236,6 +247,21 @@ def load_config():
     for field in _SECRET_FIELDS:
         if field in merged and isinstance(merged[field], str):
             merged[field] = _maybe_decrypt(field, merged[field])
+
+    # Decrypt sensitive fields in providers
+    for provider in merged.get("llm_providers", []):
+        if "api_key" in provider and isinstance(provider["api_key"], str):
+            provider["api_key"] = _maybe_decrypt("api_key", provider["api_key"])
+
+    # Migration: if llm_providers is empty but old api_endpoint is set, create one provider
+    if not merged.get("llm_providers") and merged.get("api_endpoint"):
+        merged["llm_providers"] = [{
+            "label": "LLM Provider",
+            "endpoint": merged["api_endpoint"],
+            "api_key": merged["api_key"],
+            "model": merged["api_model"],
+            "enabled": True,
+        }]
     cfg = AppConfig(**{k: merged[k] for k in defaults})
     return cfg
 
@@ -247,6 +273,18 @@ def save_config(cfg: AppConfig):
     for field in _SECRET_FIELDS:
         if field in data and isinstance(data[field], str):
             data[field] = _maybe_encrypt(field, data[field])
+
+    # Encrypt sensitive fields in providers
+    for provider in data.get("llm_providers", []):
+        if "api_key" in provider and isinstance(provider["api_key"], str):
+            provider["api_key"] = _maybe_encrypt("api_key", provider["api_key"])
+
+    # Sync first provider to legacy flat fields for backward compat
+    if data.get("llm_providers"):
+        first = data["llm_providers"][0]
+        data["api_endpoint"] = first.get("endpoint", "")
+        data["api_key"] = first.get("api_key", "")
+        data["api_model"] = first.get("model", "")
     content = json.dumps(data, indent=2, ensure_ascii=False)
     try:
         with open(CONFIG_PATH, "w", encoding="utf-8") as f:
