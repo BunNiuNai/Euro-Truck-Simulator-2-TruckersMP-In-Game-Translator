@@ -655,13 +655,24 @@ class OverlayWindow:
         self._hotkey_active = False
 
     def _focus_send_entry(self):
-        """Bring window to front and set keyboard focus to the send entry."""
+        """Bring window to front and set keyboard focus to the send entry.
+        Uses multiple Windows API tricks to work around focus-stealing prevention."""
         try:
             self.root.deiconify()
             self.root.lift()
             hwnd = self.root.winfo_id()
 
-            # AttachThreadInput: bypass Windows focus-stealing restrictions
+            # Trick 1: AllowSetForegroundWindow — grant ourselves permission
+            ctypes.windll.user32.AllowSetForegroundWindow(-1)
+
+            # Trick 2: Simulate Alt key to trigger foreground permission
+            ctypes.windll.user32.keybd_event(0x12, 0, 0, 0)       # VK_MENU down
+            ctypes.windll.user32.keybd_event(0x12, 0, 0x0002, 0)  # VK_MENU up
+
+            # Trick 3: BringWindowToTop
+            ctypes.windll.user32.BringWindowToTop(hwnd)
+
+            # Trick 4: AttachThreadInput + SetForegroundWindow
             fg_hwnd = ctypes.windll.user32.GetForegroundWindow()
             fg_tid = ctypes.windll.user32.GetWindowThreadProcessId(fg_hwnd, 0)
             our_tid = ctypes.windll.kernel32.GetCurrentThreadId()
@@ -672,11 +683,30 @@ class OverlayWindow:
             else:
                 ctypes.windll.user32.SetForegroundWindow(hwnd)
 
+            # Trick 5: SetActiveWindow + SetFocus
+            ctypes.windll.user32.SetActiveWindow(hwnd)
+            ctypes.windll.user32.SetFocus(hwnd)
+
+            # Tkinter-level focus
             self.root.focus_force()
             self.send_entry.focus_set()
+
+            # Simulate mouse click on the entry for reliability
             self._click_on_widget(self.send_entry)
-            # Schedule a second focus attempt after window is fully painted
-            self.root.after(100, lambda: self.send_entry.focus_set() if self.root.state() != "withdrawn" else None)
+
+            # Retry focus after paint completes (multiple attempts)
+            self.root.after(50, lambda: self._retry_focus())
+            self.root.after(150, lambda: self._retry_focus())
+        except Exception:
+            pass
+
+    def _retry_focus(self):
+        """Retry setting focus to the entry widget."""
+        try:
+            if self.root.state() == "withdrawn":
+                return
+            self.send_entry.focus_set()
+            self._click_on_widget(self.send_entry)
         except Exception:
             pass
 
