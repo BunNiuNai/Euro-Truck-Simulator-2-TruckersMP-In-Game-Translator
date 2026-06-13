@@ -572,6 +572,15 @@ class SettingsDialog:
         self._build_appearance_tab()
         self._build_logs_tab()
 
+        # ---- bottom buttons (always visible, outside tabs) ----
+        btn_row = tk.Frame(outer, bg=page_bg)
+        btn_row.grid(row=2, column=0, sticky="ew", padx=4, pady=(8, 12))
+
+        self._pill_btn(btn_row, "Cancel / 取消", self._on_close, accent=False).pack(
+            side=tk.RIGHT, padx=4)
+        self._pill_btn(btn_row, "Save / 保存", self._save, accent=True).pack(
+            side=tk.RIGHT, padx=4)
+
         # ---- activate first tab ----
         self._active_tab = None
         self._switch_tab("api")
@@ -724,14 +733,6 @@ class SettingsDialog:
                  font=("Microsoft YaHei", 8), anchor=tk.W).grid(
             row=r, column=1, sticky=tk.W, padx=(0, 16), pady=(4, 12))
 
-        # Bottom buttons
-        btn_row = tk.Frame(inner, bg=self._PAGE_BG)
-        btn_row.pack(fill=tk.X, pady=(24, 8))
-        self._pill_btn(btn_row, "Cancel / 取消", self._on_close, accent=False).pack(
-            side=tk.RIGHT, padx=4)
-        self._pill_btn(btn_row, "Save / 保存", self._save, accent=True).pack(
-            side=tk.RIGHT, padx=4)
-
     def _build_appearance_tab(self):
         frame = self._tab_frames["appearance"] = tk.Frame(self._content_area, bg=self._PAGE_BG)
         frame.columnconfigure(0, weight=1)
@@ -815,14 +816,6 @@ class SettingsDialog:
                             activeforeground=self._ACCENT)
         cb.grid(row=r, column=0, columnspan=2, sticky=tk.W, padx=16, pady=(4, 12))
 
-        # Bottom buttons
-        btn_row = tk.Frame(inner, bg=self._PAGE_BG)
-        btn_row.pack(fill=tk.X, pady=(24, 8))
-        self._pill_btn(btn_row, "Cancel / 取消", self._on_close, accent=False).pack(
-            side=tk.RIGHT, padx=4)
-        self._pill_btn(btn_row, "Save / 保存", self._save, accent=True).pack(
-            side=tk.RIGHT, padx=4)
-
         # Ensure opacity live value is initialized
         self._on_opacity_change(self.cfg.window_opacity)
 
@@ -859,8 +852,6 @@ class SettingsDialog:
 
         self._pill_btn(btn_row, "📂 打开日志文件夹", self._open_log_dir, accent=False).pack(side=tk.LEFT)
         self._pill_btn(btn_row, "🔄 刷新", self._refresh_logs, accent=False).pack(side=tk.LEFT, padx=(8, 0))
-        self._pill_btn(btn_row, "Cancel / 取消", self._on_close, accent=False).pack(side=tk.RIGHT, padx=4)
-        self._pill_btn(btn_row, "Save / 保存", self._save, accent=True).pack(side=tk.RIGHT, padx=4)
 
     def _switch_tab(self, key: str) -> None:
         """Switch to the given tab."""
