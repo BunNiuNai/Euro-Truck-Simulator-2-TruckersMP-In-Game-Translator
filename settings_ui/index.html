@@ -1,0 +1,283 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>ETS2 聊天翻译器 — 设置</title>
+<link rel="stylesheet" href="./styles.css" />
+</head>
+<body>
+<div class="shell">
+  <header class="topbar">
+    <h1>ETS2 <span class="accent">聊天翻译器</span></h1>
+    <span id="statusPill" class="pill">设置</span>
+  </header>
+
+  <!-- API 配置 -->
+  <section class="panel">
+    <div class="section-title">
+      <h2>🌐 LLM Providers</h2>
+      <span class="sub-text">按顺序回退，支持并行竞速</span>
+    </div>
+    <div id="providerList" class="provider-list"></div>
+    <button class="secondary-btn" onclick="addProvider()">+ 添加 Provider</button>
+  </section>
+
+  <!-- 后端与语言 -->
+  <section class="panel">
+    <div class="section-title"><h2>⚙️ 后端与语言</h2></div>
+    <div class="form-grid two-col">
+      <div class="form-group">
+        <label>翻译后端</label>
+        <select id="backend"></select>
+      </div>
+      <div class="form-group">
+        <label>目标语言</label>
+        <select id="targetLang"></select>
+      </div>
+    </div>
+  </section>
+
+  <!-- 百度翻译 -->
+  <section class="panel" id="baiduSection">
+    <div class="section-title"><h2>🔤 百度翻译API</h2></div>
+    <div class="form-grid two-col">
+      <div class="form-group">
+        <label>APP ID</label>
+        <input id="baiduAppid" type="text" placeholder="百度翻译 APP ID" />
+      </div>
+      <div class="form-group">
+        <label>Secret / 密钥</label>
+        <input id="baiduSecret" type="password" placeholder="百度翻译密钥" />
+      </div>
+    </div>
+    <p class="hint">免费申请 fanyi-api.baidu.com · 标准版每月 500 万字符</p>
+  </section>
+
+  <!-- 快捷键 -->
+  <section class="panel">
+    <div class="section-title"><h2>⌨️ 快捷键</h2></div>
+    <div class="form-grid three-col">
+      <div class="form-group">
+        <label>复制热键</label>
+        <input id="copyHotkey" type="text" placeholder="ctrl+c" />
+      </div>
+      <div class="form-group">
+        <label>发送热键</label>
+        <input id="enterHotkey" type="text" placeholder="enter" />
+      </div>
+      <div class="form-group">
+        <label>呼出输入框</label>
+        <input id="sendHotkey" type="text" placeholder="shift+y" />
+      </div>
+    </div>
+    <p class="hint">点击输入框后直接按下组合键进行捕获</p>
+  </section>
+
+  <!-- 外观 -->
+  <section class="panel">
+    <div class="section-title"><h2>🎨 外观</h2></div>
+    <div class="form-grid three-col">
+      <div class="form-group">
+        <label>窗口透明度</label>
+        <input id="opacity" type="range" min="10" max="100" value="80" />
+        <span id="opacityVal">0.80</span>
+      </div>
+      <div class="form-group">
+        <label>字体大小</label>
+        <input id="fontSize" type="number" min="8" max="24" value="12" />
+      </div>
+      <div class="form-group">
+        <label>最大消息数</label>
+        <input id="maxMessages" type="number" min="10" max="200" value="50" />
+      </div>
+    </div>
+    <div class="form-grid two-col" style="margin-top:12px">
+      <div class="form-group">
+        <label>游戏 ID</label>
+        <input id="playerName" type="text" placeholder="自动检测" />
+      </div>
+      <div class="form-group">
+        <label>窗口模式</label>
+        <div class="radio-group">
+          <label class="radio-label"><input type="radio" name="windowMode" value="standalone" /> 标准</label>
+          <label class="radio-label"><input type="radio" name="windowMode" value="overlay" /> 悬浮</label>
+        </div>
+      </div>
+    </div>
+    <div class="check-row" style="margin-top:12px">
+      <input id="clickThrough" type="checkbox" />
+      <label for="clickThrough" style="text-transform:none;font-size:13px">鼠标穿透 (仅悬浮模式)</label>
+    </div>
+  </section>
+
+  <!-- 日志 -->
+  <section class="panel">
+    <div class="section-title">
+      <h2>📋 日志</h2>
+      <button class="secondary-btn" onclick="refreshLogs()">🔄 刷新</button>
+    </div>
+    <pre id="logViewer" class="log-viewer"></pre>
+    <div style="margin-top:12px;display:flex;gap:8px">
+      <button class="secondary-btn" onclick="openLogDir()">📂 打开日志文件夹</button>
+    </div>
+  </section>
+
+  <!-- 底部按钮 -->
+  <div class="actions">
+    <button class="primary-btn" onclick="testAll()">🧪 测试全部 Provider</button>
+    <span id="testResult" class="test-result-text"></span>
+    <div style="flex:1"></div>
+    <button class="secondary-btn" onclick="window.close()">取消</button>
+    <button class="primary-btn accent-btn" onclick="save()">💾 保存</button>
+  </div>
+</div>
+
+<script>
+// ===== Provider Management =====
+let providerCount = 0;
+
+function createProviderCard(p, index) {
+  const div = document.createElement('div');
+  div.className = 'provider-card';
+  div.innerHTML = `
+    <div class="provider-header">
+      <label class="check-label">
+        <input type="checkbox" class="provider-enabled" ${p.enabled ? 'checked' : ''} />
+        <input type="text" class="provider-label" value="${esc(p.label)}" placeholder="Provider 名称" />
+      </label>
+      <div class="provider-btns">
+        <button class="icon-btn" onclick="moveProvider(${index}, -1)" ${index === 0 ? 'disabled' : ''}>↑</button>
+        <button class="icon-btn" onclick="moveProvider(${index}, 1)">↓</button>
+        <button class="icon-btn danger" onclick="removeProvider(${index})">✕</button>
+      </div>
+    </div>
+    <div class="provider-fields">
+      <div class="form-group"><label>Endpoint</label><input type="text" class="provider-ep" value="${esc(p.endpoint)}" placeholder="https://api.example.com/v1/chat/completions" /></div>
+      <div class="form-group"><label>API Key</label><input type="password" class="provider-key" value="${esc(p.api_key)}" placeholder="sk-xxx" /></div>
+      <div class="form-group"><label>Model</label><input type="text" class="provider-model" value="${esc(p.model)}" placeholder="gpt-4o-mini" /></div>
+    </div>
+  `;
+  return div;
+}
+
+function rebuildProviderList() {
+  const list = document.getElementById('providerList');
+  list.innerHTML = '';
+  pywebview.api.get_providers().then(providers => {
+    providers.forEach((p, i) => {
+      list.appendChild(createProviderCard(p, i));
+    });
+  });
+}
+
+function addProvider() {
+  pywebview.api.add_provider().then(rebuildProviderList);
+}
+
+function removeProvider(index) {
+  pywebview.api.remove_provider(index).then(rebuildProviderList);
+}
+
+function moveProvider(index, dir) {
+  pywebview.api.move_provider(index, dir).then(rebuildProviderList);
+}
+
+function gatherProviders() {
+  const cards = document.querySelectorAll('.provider-card');
+  const providers = [];
+  cards.forEach(card => {
+    providers.push({
+      enabled: card.querySelector('.provider-enabled').checked,
+      label: card.querySelector('.provider-label').value.trim(),
+      endpoint: card.querySelector('.provider-ep').value.trim(),
+      api_key: card.querySelector('.provider-key').value.trim(),
+      model: card.querySelector('.provider-model').value.trim(),
+    });
+  });
+  return providers;
+}
+
+// ===== Load / Save =====
+async function loadConfig() {
+  const cfg = await pywebview.api.load_config();
+  // Backend
+  document.getElementById('backend').value = cfg.translation_backend;
+  document.getElementById('targetLang').value = cfg.target_language;
+  // Baidu
+  document.getElementById('baiduAppid').value = cfg.baidu_appid || '';
+  document.getElementById('baiduSecret').value = cfg.baidu_secret || '';
+  toggleBaidu();
+  // Hotkeys
+  document.getElementById('copyHotkey').value = cfg.copy_hotkey;
+  document.getElementById('enterHotkey').value = cfg.enter_hotkey;
+  document.getElementById('sendHotkey').value = cfg.send_hotkey;
+  // Appearance
+  document.getElementById('opacity').value = Math.round(cfg.window_opacity * 100);
+  document.getElementById('opacityVal').textContent = cfg.window_opacity.toFixed(2);
+  document.getElementById('fontSize').value = cfg.font_size;
+  document.getElementById('maxMessages').value = cfg.max_messages;
+  document.getElementById('playerName').value = cfg.player_name || '';
+  document.querySelector(`input[name="windowMode"][value="${cfg.window_mode}"]`).checked = true;
+  document.getElementById('clickThrough').checked = cfg.click_through;
+  // Providers
+  rebuildProviderList();
+  // Logs
+  refreshLogs();
+}
+
+function toggleBaidu() {
+  const be = document.getElementById('backend').value;
+  document.getElementById('baiduSection').style.display =
+    (be === 'baidu' || be === 'llm+baidu') ? '' : 'none';
+}
+
+async function save() {
+  const cfg = {
+    translation_backend: document.getElementById('backend').value,
+    target_language: document.getElementById('targetLang').value,
+    baidu_appid: document.getElementById('baiduAppid').value.trim(),
+    baidu_secret: document.getElementById('baiduSecret').value.trim(),
+    copy_hotkey: document.getElementById('copyHotkey').value.trim() || 'ctrl+c',
+    enter_hotkey: document.getElementById('enterHotkey').value.trim() || 'enter',
+    send_hotkey: document.getElementById('sendHotkey').value.trim() || 'shift+y',
+    window_opacity: parseInt(document.getElementById('opacity').value) / 100,
+    font_size: parseInt(document.getElementById('fontSize').value),
+    max_messages: parseInt(document.getElementById('maxMessages').value),
+    player_name: document.getElementById('playerName').value.trim(),
+    window_mode: document.querySelector('input[name="windowMode"]:checked').value,
+    click_through: document.getElementById('clickThrough').checked,
+  };
+  await pywebview.api.save_config(cfg, gatherProviders());
+  window.close();
+}
+
+async function testAll() {
+  const result = document.getElementById('testResult');
+  result.textContent = '测试中...';
+  const msg = await pywebview.api.test_all(gatherProviders());
+  result.textContent = msg;
+}
+
+async function refreshLogs() {
+  const logs = await pywebview.api.get_logs();
+  document.getElementById('logViewer').textContent = logs.join('\n');
+}
+
+async function openLogDir() {
+  await pywebview.api.open_log_dir();
+}
+
+// Events
+document.getElementById('backend').addEventListener('change', toggleBaidu);
+document.getElementById('opacity').addEventListener('input', function() {
+  document.getElementById('opacityVal').textContent = (this.value / 100).toFixed(2);
+});
+
+// Startup
+loadConfig();
+
+function esc(s) { return s ? s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;') : ''; }
+</script>
+</body>
+</html>
