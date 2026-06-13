@@ -26,6 +26,8 @@ from win32_constants import (
     POINT, mod_vk,
 )
 
+from logger import get_logger
+
 # Debug logging — off by default
 _debug_enabled = False
 
@@ -616,6 +618,10 @@ class OverlayWindow:
         if vk == 0:
             return
 
+        log = get_logger()
+        if log:
+            log.info("HOT", f"全局热键: {self._format_hotkey(self.cfg.send_hotkey)}")
+
         import threading
         self._hotkey_active = True
 
@@ -680,6 +686,9 @@ class OverlayWindow:
         self.cfg.send_hotkey = new_hotkey
         self._update_hotkey_hint()
         self._start_hotkey_poller()
+        log = get_logger()
+        if log:
+            log.info("HOT", f"热键变更: {self._format_hotkey(new_hotkey)}")
 
     # ----- send chat message -----
     def _on_send_enter(self, event):
@@ -729,6 +738,9 @@ class OverlayWindow:
         self.send_hint.config(text=" 翻译失败 ", fg="#f44747")
         self.root.after(5000, lambda: self._update_hotkey_hint())
         self.add_message("System", "发送翻译失败", error, is_self=True)
+        log = get_logger()
+        if log:
+            log.error("LLM", f"发送翻译失败: {error}")
 
     # ----- manual send hotkeys -----
 
