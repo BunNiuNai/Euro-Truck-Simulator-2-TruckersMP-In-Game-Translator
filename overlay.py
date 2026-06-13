@@ -481,6 +481,10 @@ class OverlayWindow:
         self.text.configure(state=tk.DISABLED)
         self._sync_display()
 
+    def get_recent_messages(self):
+        """Return recent messages for the message log (settings tab)."""
+        return list(self._messages)
+
     def add_message(self, player_name: str, original: str, translated: str, is_self: bool = False):
         self._messages.append((player_name, original, translated, is_self))
         if len(self._messages) > self.cfg.max_messages:

@@ -558,7 +558,8 @@ class SettingsDialog:
             ("api", "API 配置"),
             ("hotkeys", "快捷键"),
             ("appearance", "外观"),
-            ("logs", "📋 日志"),
+            ("logs", "📋 翻译器日志"),
+            ("messages", "💬 消息日志"),
         ]
         for i, (key, label) in enumerate(tab_names):
             btn = tk.Label(self._tab_bar, text=label,
@@ -585,6 +586,7 @@ class SettingsDialog:
         self._build_hotkeys_tab()
         self._build_appearance_tab()
         self._build_logs_tab()
+        self._build_messages_tab()
 
         # ---- bottom buttons (always visible, outside tabs) ----
         btn_row = tk.Frame(outer, bg=page_bg)
@@ -869,6 +871,58 @@ class SettingsDialog:
         self._pill_btn(btn_row, "📂 打开日志文件夹", self._open_log_dir, accent=False).pack(side=tk.LEFT)
         self._pill_btn(btn_row, "🔄 刷新", self._refresh_logs, accent=False).pack(side=tk.LEFT, padx=(8, 0))
 
+    def _build_messages_tab(self):
+        """Build the message log tab — shows recent translated chat messages."""
+        frame = self._tab_frames["messages"] = tk.Frame(self._content_area, bg=self._PAGE_BG)
+        frame.rowconfigure(0, weight=1)
+        frame.columnconfigure(0, weight=1)
+
+        self.msg_text = tk.Text(
+            frame,
+            font=("Microsoft YaHei", 10),
+            bg=self._INPUT_BG, fg=self._TEXT,
+            wrap=tk.WORD, state=tk.DISABLED,
+            borderwidth=1, highlightthickness=1,
+            highlightbackground=self._INPUT_BORDER,
+            padx=10, pady=10,
+            insertbackground=self._TEXT,
+        )
+        vbar = ttk.Scrollbar(frame, orient=tk.VERTICAL, command=self.msg_text.yview)
+        self.msg_text.configure(yscrollcommand=vbar.set)
+        self.msg_text.grid(row=0, column=0, sticky="nsew")
+        vbar.grid(row=0, column=1, sticky="ns")
+
+        self.msg_text.tag_configure("player", foreground=self._ACCENT, font=("Microsoft YaHei", 10, "bold"))
+        self.msg_text.tag_configure("trans", foreground="#4ec9b0")
+        self.msg_text.tag_configure("original", foreground=self._TEXT_SEC)
+        self.msg_text.tag_configure("self_tag", foreground="#f59e0b")
+        self.msg_text.tag_configure("sep", foreground=self._CARD_BORDER)
+
+        btn_row = tk.Frame(frame, bg=self._PAGE_BG)
+        btn_row.grid(row=1, column=0, columnspan=2, sticky="ew", pady=(8, 4), padx=8)
+        self._pill_btn(btn_row, "🔄 刷新", self._refresh_messages, accent=False).pack(side=tk.LEFT)
+
+    def _refresh_messages(self):
+        """Reload message log from the overlay window."""
+        if not hasattr(self, 'msg_text') or not self.overlay:
+            return
+        msgs = self.overlay.get_recent_messages()
+        self.msg_text.configure(state=tk.NORMAL)
+        self.msg_text.delete("1.0", tk.END)
+        for player, orig, trans, is_self in msgs:
+            prefix = "(You) " if is_self else ""
+            self.msg_text.insert(tk.END, f"{prefix}[", "self_tag" if is_self else "player")
+            self.msg_text.insert(tk.END, f"{player}", "self_tag" if is_self else "player")
+            self.msg_text.insert(tk.END, "] ", "player")
+            self.msg_text.insert(tk.END, f"{orig}", "original")
+            if trans != orig:
+                self.msg_text.insert(tk.END, " → ", "sep")
+                self.msg_text.insert(tk.END, f"{trans}\n", "trans")
+            else:
+                self.msg_text.insert(tk.END, "\n")
+        self.msg_text.configure(state=tk.DISABLED)
+        self.msg_text.see(tk.END)
+
     def _on_settings_mousewheel(self, event) -> None:
         """Global mousewheel handler — scrolls the active tab's canvas."""
         canvas = self._canvases.get(self._active_tab)
@@ -890,6 +944,8 @@ class SettingsDialog:
         self._active_tab = key
         if key == "logs":
             self._refresh_logs()
+        if key == "messages":
+            self._refresh_messages()
 
     def _tab_hover_leave(self, btn: tk.Label, key: str) -> None:
         if self._active_tab == key:
