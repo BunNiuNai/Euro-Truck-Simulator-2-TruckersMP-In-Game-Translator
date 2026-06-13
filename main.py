@@ -430,49 +430,16 @@ class SettingsDialog:
     # ------------------------------------------------------------------
     #  ui helpers
     # ------------------------------------------------------------------
-    def _card(self, parent, radius=10, **kw):
-        """Canvas-backed card with rounded corners. Use `._inner` for child widgets."""
-        kw.pop("padx", None); kw.pop("pady", None)
-        canvas = tk.Canvas(parent, bg=self._PAGE_BG, highlightthickness=0, bd=0, **kw)
-        canvas._r = radius
-        inner = tk.Frame(canvas, bg=self._CARD_BG)
-        canvas._inner = inner
-        win_id = canvas.create_window(radius, radius, window=inner, anchor=tk.NW)
-
-        def _draw(w, h):
-            r = radius
-            canvas.delete("bg")
-            for x, y, s in [(0, 0, 90), (w - r*2 - 1, 0, 0),
-                             (0, h - r*2 - 1, 180), (w - r*2 - 1, h - r*2 - 1, 270)]:
-                canvas.create_arc(x, y, x + r*2, y + r*2, start=s, extent=90,
-                                  fill=self._CARD_BG, outline="", tags="bg")
-            canvas.create_rectangle(r, 0, w - r, h, fill=self._CARD_BG, outline="", tags="bg")
-            canvas.create_rectangle(0, r, w, h - r, fill=self._CARD_BG, outline="", tags="bg")
-            canvas.coords(win_id, r, r)
-
-        # When inner content changes height, grow canvas vertically
-        def _on_inner_configure(e):
-            h = e.height + radius * 2 + 4
-            w = max(e.width + radius * 2 + 4, canvas.winfo_width())
-            canvas.configure(height=h)
-            _draw(w, h)
-        inner.bind("<Configure>", _on_inner_configure)
-
-        # When canvas is resized by pack/grid, resize inner frame and re-layout children
-        def _on_canvas_configure(e):
-            w = e.width
-            h = max(inner.winfo_reqheight() + radius * 2 + 4, e.height)
-            canvas.configure(height=h)
-            inner.configure(width=w - radius * 2 - 4)
-            _draw(w, h)
-        canvas.bind("<Configure>", _on_canvas_configure, add="+")
-
-        return canvas
+    def _card(self, parent, **kw):
+        """Styled card Frame. Children resize with window."""
+        card = tk.Frame(parent, bg=self._CARD_BG,
+                        highlightbackground=self._CARD_BORDER,
+                        highlightthickness=1, **kw)
+        return card
 
     @staticmethod
     def _unwrap(parent):
-        """If parent is a Canvas from _card(), return its inner Frame."""
-        return getattr(parent, '_inner', parent)
+        return parent  # pass-through, kept for API compat
 
     def _label(self, parent, text, accent=False, small=False, **kw):
         """Styled label."""
@@ -676,12 +643,12 @@ class SettingsDialog:
         self._section_label(inner, "BACKEND & LANGUAGE  /  后端与语言").pack(fill=tk.X, pady=(8, 8))
         card_meta = self._card(inner, padx=16, pady=12)
         card_meta.pack(fill=tk.X, pady=(0, 4))
-        card_meta._inner.columnconfigure(1, weight=1)
+        card_meta.columnconfigure(1, weight=1)
 
         r = 0
         self.backend_var = tk.StringVar(value=self.cfg.translation_backend)
         self.backend_combo = ttk.Combobox(
-            card_meta._inner, textvariable=self.backend_var,
+            card_meta, textvariable=self.backend_var,
             values=["llm", "baidu", "llm+baidu"],
             state="readonly", width=18, font=("Microsoft YaHei", 10))
         self.backend_combo.bind("<<ComboboxSelected>>", self._on_backend_changed)
@@ -695,7 +662,7 @@ class SettingsDialog:
         self._lang_rev = {v: k for k, v in self._lang_map.items()}
         self.lang_var = tk.StringVar(value=self._lang_rev.get(self.cfg.target_language, "简体中文"))
         self.lang_combo = ttk.Combobox(
-            card_meta._inner, textvariable=self.lang_var,
+            card_meta, textvariable=self.lang_var,
             values=list(self._lang_map.keys()),
             state="readonly", width=18, font=("Microsoft YaHei", 10))
         r = self._row(card_meta, r, "Target Language / 目标语言", self.lang_combo)
@@ -704,26 +671,26 @@ class SettingsDialog:
         self._section_label(inner, "BAIDU TRANSLATE  /  百度翻译").pack(fill=tk.X, pady=(8, 8))
         self.baidu_group = self._card(inner)
         self.baidu_group.pack(fill=tk.X, pady=(0, 4))
-        self.baidu_group._inner.columnconfigure(1, weight=1)
-        tk.Label(self.baidu_group._inner, text="Baidu Translate",
+        self.baidu_group.columnconfigure(1, weight=1)
+        tk.Label(self.baidu_group, text="Baidu Translate",
                  bg=self._CARD_BG, fg=self._TEXT_SEC,
                  font=("Microsoft YaHei", 8, "bold"), anchor=tk.W).grid(
             row=0, column=0, columnspan=2, sticky=tk.W, padx=12, pady=(8, 2))
         self.baidu_appid_entry = self._entry(self.baidu_group, width=42)
         self.baidu_appid_entry.grid(row=1, column=0, columnspan=2, sticky=tk.EW,
                                      padx=12, pady=(4, 2))
-        tk.Label(self.baidu_group._inner, text="APP ID",
+        tk.Label(self.baidu_group, text="APP ID",
                  bg=self._CARD_BG, fg=self._TEXT_SEC,
                  font=("Microsoft YaHei", 8), anchor=tk.W).grid(
             row=2, column=0, sticky=tk.W, padx=12, pady=(0, 2))
         self.baidu_secret_entry = self._entry(self.baidu_group, show="*", width=42)
         self.baidu_secret_entry.grid(row=3, column=0, columnspan=2, sticky=tk.EW,
                                       padx=12, pady=(4, 2))
-        tk.Label(self.baidu_group._inner, text="Secret / 密钥",
+        tk.Label(self.baidu_group, text="Secret / 密钥",
                  bg=self._CARD_BG, fg=self._TEXT_SEC,
                  font=("Microsoft YaHei", 8), anchor=tk.W).grid(
             row=4, column=0, sticky=tk.W, padx=12, pady=(0, 2))
-        tk.Label(self.baidu_group._inner,
+        tk.Label(self.baidu_group,
                  text="免费申请  fanyi-api.baidu.com  ·  标准版每月 500 万字符",
                  bg=self._CARD_BG, fg=self._TEXT_SEC,
                  font=("Microsoft YaHei", 7)).grid(
@@ -769,7 +736,7 @@ class SettingsDialog:
         self._section_label(inner, "HOTKEYS  /  快捷键").pack(fill=tk.X, pady=(0, 8))
         card2 = self._card(inner, padx=16, pady=12)
         card2.pack(fill=tk.X, pady=(0, 4))
-        card2._inner.columnconfigure(1, weight=1)
+        card2.columnconfigure(1, weight=1)
 
         r = 0
         r = self._row(card2, r, "Copy Hotkey / 复制", self._hotkey_capture(card2, self.cfg.copy_hotkey, "_copy_cap"))
@@ -778,7 +745,7 @@ class SettingsDialog:
 
         r = self._row(card2, r, "Focus Key / 呼出输入框", self._hotkey_capture(card2, self.cfg.send_hotkey, "_focus_cap"))
 
-        tk.Label(card2._inner,
+        tk.Label(card2,
                  text="按下组合键进行捕获",
                  bg=self._CARD_BG, fg=self._RED,
                  font=("Microsoft YaHei", 8), anchor=tk.W).grid(
@@ -812,13 +779,13 @@ class SettingsDialog:
         self._section_label(inner, "APPEARANCE  /  外观").pack(fill=tk.X, pady=(0, 8))
         card3 = self._card(inner, padx=16, pady=12)
         card3.pack(fill=tk.X, pady=(0, 4))
-        card3._inner.columnconfigure(1, weight=1)
+        card3.columnconfigure(1, weight=1)
 
         r = 0
         # Opacity row – manual layout (scale + live value label)
         self._label(card3, "Window Opacity / 窗口透明度").grid(
             row=r, column=0, sticky=tk.W, pady=5, padx=(16, 8))
-        opacity_row = tk.Frame(card3._inner, bg=self._CARD_BG)
+        opacity_row = tk.Frame(card3, bg=self._CARD_BG)
         opacity_row.columnconfigure(0, weight=1)
         self.opacity_scale = tk.Scale(opacity_row, from_=0.1, to=1.0, resolution=0.01,
                                        orient=tk.HORIZONTAL, bg=self._CARD_BG, fg=self._TEXT,
@@ -833,17 +800,17 @@ class SettingsDialog:
         opacity_row.grid(row=r, column=1, sticky=tk.EW, padx=(0, 16))
         r += 1
 
-        self.font_spin = ttk.Spinbox(card3._inner, from_=8, to=24, width=6, font=("Microsoft YaHei", 10))
+        self.font_spin = ttk.Spinbox(card3, from_=8, to=24, width=6, font=("Microsoft YaHei", 10))
         r = self._row(card3, r, "Font Size / 字体大小", self.font_spin)
 
-        self.max_spin = ttk.Spinbox(card3._inner, from_=10, to=200, width=6, font=("Microsoft YaHei", 10))
+        self.max_spin = ttk.Spinbox(card3, from_=10, to=200, width=6, font=("Microsoft YaHei", 10))
         r = self._row(card3, r, "Max Messages / 最大消息数", self.max_spin)
 
         self.name_entry = self._entry(card3)
         r = self._row(card3, r, "Game Name / 游戏昵称", self.name_entry)
 
         self.mode_var = tk.StringVar(value=self.cfg.window_mode)
-        mode_frame = tk.Frame(card3._inner, bg=self._CARD_BG)
+        mode_frame = tk.Frame(card3, bg=self._CARD_BG)
         for val, lbl in [("standalone", "Standalone / 标准"), ("overlay", "Overlay / 悬浮")]:
             rb = tk.Radiobutton(mode_frame, text=lbl, variable=self.mode_var, value=val,
                                 bg=self._CARD_BG, fg=self._TEXT,
@@ -856,7 +823,7 @@ class SettingsDialog:
         r = self._row(card3, r, "Window Mode / 窗口模式", mode_frame)
 
         self.click_var = tk.BooleanVar(value=self.cfg.click_through)
-        cb = tk.Checkbutton(card3._inner, text="Click-through / 鼠标穿透 (仅悬浮模式)",
+        cb = tk.Checkbutton(card3, text="Click-through / 鼠标穿透 (仅悬浮模式)",
                             variable=self.click_var,
                             bg=self._CARD_BG, fg=self._TEXT,
                             font=("Microsoft YaHei", 10),
@@ -1012,10 +979,10 @@ class SettingsDialog:
         """Create a widget card for one provider."""
         card = self._card(self._provider_list_frame, padx=12, pady=8)
         card.grid(row=index, column=0, sticky="ew", pady=(0, 4))
-        card._inner.columnconfigure(1, weight=1)
+        card.columnconfigure(1, weight=1)
 
         # Header: enabled checkbox + label + buttons
-        header = tk.Frame(card._inner, bg=self._CARD_BG)
+        header = tk.Frame(card, bg=self._CARD_BG)
         header.grid(row=0, column=0, columnspan=2, sticky="ew", padx=8, pady=(4, 0))
         header.columnconfigure(1, weight=1)
 
