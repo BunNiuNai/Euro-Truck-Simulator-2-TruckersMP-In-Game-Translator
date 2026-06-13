@@ -12,6 +12,7 @@ from dataclasses import dataclass
 from queue import Queue
 
 from config import get_documents_path
+from logger import get_logger
 
 DOCUMENTS_PATH = get_documents_path()
 CHAT_LOG_DIR = os.path.join(DOCUMENTS_PATH, "ETS2MP", "logs")
@@ -132,6 +133,9 @@ class ChatMonitor(threading.Thread):
             self._last_size = os.path.getsize(latest)
             self._seen.clear()
             self.status = f"已切换日志: {os.path.basename(latest)} (旧: {old})"
+            log = get_logger()
+            if log:
+                log.info("TMP", f"日志文件切换: {old} → {os.path.basename(latest)}")
             return True
         return False
 
@@ -144,6 +148,9 @@ class ChatMonitor(threading.Thread):
                 if self._log_path:
                     self._last_size = os.path.getsize(self._log_path)
                     self.status = f"已找到日志: {os.path.basename(self._log_path)}"
+                    log = get_logger()
+                    if log:
+                        log.info("TMP", f"聊天日志: {os.path.basename(self._log_path)} ({self._last_size} bytes)")
                 else:
                     self.status = log_dir_status()
             else:
@@ -194,3 +201,6 @@ class ChatMonitor(threading.Thread):
     def stop(self):
         self.status = "已停止"
         self._stop_event.set()
+        log = get_logger()
+        if log:
+            log.info("TMP", "聊天监控已停止")
