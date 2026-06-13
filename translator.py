@@ -27,6 +27,15 @@ BATCH_WINDOW = 0.3  # seconds to wait for more messages before sending batch
 BATCH_SEPARATOR = "\n---\n"
 
 
+class ProviderHealth:
+    """Tracks health state for one provider (circuit breaker pattern)."""
+    __slots__ = ("failures", "cool_until")
+
+    def __init__(self):
+        self.failures: int = 0
+        self.cool_until: float = 0.0
+
+
 class LRUCache:
     def __init__(self, maxsize: int = CACHE_SIZE):
         self.maxsize = maxsize
@@ -59,6 +68,10 @@ class Translator(threading.Thread):
         self._client = httpx.Client(timeout=8.0)
         self.stats = TranslationStats()
         self._msg_since_log = 0  # counter for periodic stats logging
+        self._provider_health: dict[str, ProviderHealth] = {}
+        self._in_flight: dict[str, threading.Event] = {}
+        self._in_flight_results: dict[str, str] = {}
+        self._in_flight_lock = threading.Lock()
 
     def run(self):
         import os
@@ -286,6 +299,39 @@ class Translator(threading.Thread):
             if log:
                 log.info("BDU", f"百度纠错: {baidu_override_count}/{len(batch)} 条被覆盖")
 
+    # ── Circuit breaker ──
+
+    def _is_cooling(self, label: str) -> bool:
+        """Check if a provider is in cooldown (circuit breaker open)."""
+        health = self._provider_health.get(label)
+        if health and health.cool_until > 0:
+            if time.monotonic() < health.cool_until:
+                return True
+        return False
+
+    def _note_provider_result(self, label: str, success: bool) -> None:
+        """Update provider health after a translation attempt."""
+        if label not in self._provider_health:
+            self._provider_health[label] = ProviderHealth()
+        h = self._provider_health[label]
+        log = get_logger()
+
+        if success:
+            if h.failures > 0:
+                if log:
+                    log.info("LLM", f"Provider {label} 已恢复（之前 {h.failures} 次失败）")
+            h.failures = 0
+            h.cool_until = 0
+        else:
+            h.failures += 1
+            if h.failures >= 3:
+                duration = min(30 * (2 ** (h.failures - 3)), 120)
+                h.cool_until = time.monotonic() + duration
+                if log:
+                    log.warn("LLM", f"Provider {label} 进入冷却 {duration}s（连续 {h.failures} 次失败）")
+
+    # ── Provider calling ──
+
     def _call_provider(self, provider: dict, text: str) -> str:
         """Call a single LLM provider. Raises exception on failure."""
         endpoint = provider["endpoint"].strip()
@@ -313,46 +359,91 @@ class Translator(threading.Thread):
         return data["choices"][0]["message"]["content"].strip()
 
     def _call_api(self, text: str) -> str:
-        """Call providers with parallel race + serial fallback."""
+        """Call providers with parallel race + serial fallback.
+        Merges in-flight identical requests. Filters cooling providers."""
         if self._should_skip(text):
             return text
 
+        # Request merging: wait for identical in-flight request
+        with self._in_flight_lock:
+            if text in self._in_flight:
+                event = self._in_flight[text]
+                event.wait(timeout=10.0)
+                result = self._in_flight_results.get(text)
+                if result is not None:
+                    return result
+            self._in_flight[text] = threading.Event()
+
+        try:
+            result = self._call_api_internal(text)
+            with self._in_flight_lock:
+                self._in_flight_results[text] = result
+            return result
+        finally:
+            with self._in_flight_lock:
+                event = self._in_flight.pop(text, None)
+                if event:
+                    event.set()
+                self._in_flight_results.pop(text, None)
+
+    def _call_api_internal(self, text: str) -> str:
+        """Provider parallel race + serial fallback with circuit breaker."""
         providers = [p for p in self.cfg.llm_providers if p.get("enabled", True)]
         if not providers:
             return self._call_api_legacy(text)
 
+        # Filter out cooling providers
+        active = [p for p in providers if not self._is_cooling(p["label"])]
+        if not active:
+            log = get_logger()
+            if log:
+                log.warn("LLM", "所有 Provider 均处于冷却期，强制重试全部")
+            active = providers
+
+        skipped = len(providers) - len(active)
+        if skipped > 0:
+            log = get_logger()
+            if log:
+                cooling_names = [p["label"] for p in providers if p not in active]
+                log.warn("LLM", f"跳过冷却中的 Provider: {', '.join(cooling_names)}")
+
         log = get_logger()
 
-        # Round 1: Parallel race
+        # Round 1: Parallel race (only active providers)
         errors = []
-        with ThreadPoolExecutor(max_workers=min(len(providers), 4)) as executor:
+        with ThreadPoolExecutor(max_workers=min(len(active), 4)) as executor:
             futures = {
                 executor.submit(self._call_provider, p, text): p["label"]
-                for p in providers
+                for p in active
             }
             for future in as_completed(futures):
                 label = futures[future]
                 try:
                     result = future.result()
+                    self._note_provider_result(label, True)
                     if log:
                         log.info("LLM", f"竞速成功: {label}")
                     return result
                 except Exception as e:
                     err = self._format_error(e)
                     errors.append(f"{label}: {err}")
+                    self._note_provider_result(label, False)
                     if log:
                         log.warn("LLM", f"竞速失败: {label} - {err}")
 
-        # Round 2: Serial retry (180ms apart)
+        # Round 2: Serial retry (active + cooling, 180ms apart)
         if log:
-            log.warn("LLM", f"第一轮全部失败，进入串行重试 ({len(providers)} providers)")
-        for p in providers:
+            log.warn("LLM", f"第一轮全部失败，进入串行重试 ({len(active)} providers)")
+        retry_list = active + [p for p in providers if p not in active]
+        for p in retry_list:
             try:
                 result = self._call_provider(p, text)
+                self._note_provider_result(p["label"], True)
                 if log:
                     log.info("LLM", f"重试成功: {p['label']}")
                 return result
             except Exception:
+                self._note_provider_result(p["label"], False)
                 time.sleep(0.18)
 
         raise Exception(" | ".join(errors) if errors else "所有 Provider 翻译失败")
