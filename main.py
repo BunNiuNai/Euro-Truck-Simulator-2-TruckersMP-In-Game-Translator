@@ -419,6 +419,7 @@ class SettingsDialog:
         self.top.grab_set()
         self.top.configure(bg=self._PAGE_BG)
 
+        self._provider_widgets = []  # provider widget list for UI
         self._build()
         self._load_values()
 
@@ -614,41 +615,46 @@ class SettingsDialog:
         def _on_mousewheel(event):
             canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
 
-        # Card 1: API
-        self._section_label(inner, "TRANSLATION API  /  翻译接口").pack(fill=tk.X, pady=(0, 8))
-        card1 = self._card(inner, padx=16, pady=12)
-        card1.pack(fill=tk.X, pady=(0, 4))
-        card1.columnconfigure(1, weight=1)
+        # Section: provider list
+        self._section_label(inner, "LLM PROVIDERS  /  语言模型提供商").pack(fill=tk.X, pady=(0, 8))
+
+        self._provider_list_frame = tk.Frame(inner, bg=self._PAGE_BG)
+        self._provider_list_frame.pack(fill=tk.X)
+        self._provider_list_frame.columnconfigure(0, weight=1)
+
+        # Add provider button
+        add_row = tk.Frame(inner, bg=self._PAGE_BG)
+        add_row.pack(fill=tk.X, pady=(4, 12))
+        self._pill_btn(add_row, "+ 添加 Provider", self._add_provider, accent=False).pack(side=tk.LEFT)
+
+        # Backend + target language (compact row card)
+        self._section_label(inner, "BACKEND & LANGUAGE  /  后端与语言").pack(fill=tk.X, pady=(8, 8))
+        card_meta = self._card(inner, padx=16, pady=12)
+        card_meta.pack(fill=tk.X, pady=(0, 4))
+        card_meta.columnconfigure(1, weight=1)
 
         r = 0
-        self.ep_entry = self._entry(card1)
-        r = self._row(card1, r, "API Endpoint / 地址", self.ep_entry)
-
-        self.key_entry = self._entry(card1, show="*")
-        r = self._row(card1, r, "API Key / 密钥", self.key_entry)
-
-        self.model_entry = self._entry(card1)
-        r = self._row(card1, r, "Model / 模型", self.model_entry)
-
         self.backend_var = tk.StringVar(value=self.cfg.translation_backend)
         self.backend_combo = ttk.Combobox(
-            card1, textvariable=self.backend_var,
+            card_meta, textvariable=self.backend_var,
             values=["llm", "baidu", "llm+baidu"],
             state="readonly", width=18, font=("Microsoft YaHei", 10))
         self.backend_combo.bind("<<ComboboxSelected>>", self._on_backend_changed)
-        r = self._row(card1, r, "Backend / 翻译后端", self.backend_combo)
+        r = self._row(card_meta, r, "Backend / 翻译后端", self.backend_combo)
 
         self.lang_var = tk.StringVar(value=self.cfg.target_language)
         self.lang_combo = ttk.Combobox(
-            card1, textvariable=self.lang_var,
+            card_meta, textvariable=self.lang_var,
             values=["zh-CN", "en", "ja", "ko", "fr", "de", "es", "ru", "pt", "it"],
             state="readonly", width=18, font=("Microsoft YaHei", 10))
-        r = self._row(card1, r, "Target Language / 目标语言", self.lang_combo)
+        r = self._row(card_meta, r, "Target Language / 目标语言", self.lang_combo)
 
         # Baidu sub-card
-        self.baidu_group = tk.Frame(card1, bg=self._INPUT_BG,
+        self._section_label(inner, "BAIDU TRANSLATE  /  百度翻译").pack(fill=tk.X, pady=(8, 8))
+        self.baidu_group = tk.Frame(inner, bg=self._INPUT_BG,
                                      highlightbackground=self._CARD_BORDER,
                                      highlightthickness=1)
+        self.baidu_group.pack(fill=tk.X, pady=(0, 4))
         self.baidu_group.columnconfigure(1, weight=1)
         tk.Label(self.baidu_group, text="Baidu Translate",
                  bg=self._INPUT_BG, fg=self._TEXT_SEC,
@@ -673,15 +679,13 @@ class SettingsDialog:
                  bg=self._INPUT_BG, fg=self._TEXT_SEC,
                  font=("Microsoft YaHei", 7)).grid(
             row=5, column=0, columnspan=2, sticky=tk.W, padx=12, pady=(2, 10))
-        self.baidu_group.grid(row=r, column=0, columnspan=2, sticky=tk.EW,
-                               padx=12, pady=(6, 12))
         self._on_backend_changed()
 
         # Test button row
         btn_row = tk.Frame(inner, bg=self._PAGE_BG)
         btn_row.pack(fill=tk.X, pady=(24, 8))
 
-        self._test_btn = self._pill_btn(btn_row, "Test / 测试连接", self._test_connection, accent=False)
+        self._test_btn = self._pill_btn(btn_row, "Test / 测试所有 Provider", self._test_all_providers, accent=False)
         self._test_btn.pack(side=tk.LEFT, padx=(0, 8))
 
         self._test_status = tk.Label(btn_row, text="", bg=self._PAGE_BG, fg=self._TEXT_SEC,
@@ -941,6 +945,146 @@ class SettingsDialog:
         else:
             self.baidu_group.grid_remove()
 
+    # ------------------------------------------------------------------
+    #  provider list management
+    # ------------------------------------------------------------------
+    def _rebuild_provider_list(self):
+        """Rebuild provider widgets from cfg.llm_providers."""
+        for w in self._provider_widgets:
+            w["frame"].destroy()
+        self._provider_widgets.clear()
+        for i, p in enumerate(self.cfg.llm_providers):
+            self._add_provider_widget(i, p)
+
+    def _add_provider_widget(self, index, p):
+        """Create a widget card for one provider."""
+        card = self._card(self._provider_list_frame, padx=12, pady=8)
+        card.grid(row=index, column=0, sticky="ew", pady=(0, 4))
+        card.columnconfigure(1, weight=1)
+
+        # Header: enabled checkbox + label + buttons
+        header = tk.Frame(card, bg=self._CARD_BG)
+        header.grid(row=0, column=0, columnspan=2, sticky="ew", padx=8, pady=(4, 0))
+        header.columnconfigure(1, weight=1)
+
+        en_var = tk.BooleanVar(value=p.get("enabled", True))
+        cb = tk.Checkbutton(header, text=p.get("label", f"Provider {index+1}"),
+                            variable=en_var, bg=self._CARD_BG, fg=self._TEXT,
+                            font=("Microsoft YaHei", 10, "bold"),
+                            selectcolor=self._CARD_BG,
+                            activebackground=self._CARD_BG,
+                            activeforeground=self._ACCENT,
+                            command=lambda i=index, v=en_var: self._toggle_provider(i, v.get()))
+        cb.pack(side=tk.LEFT)
+
+        # Move up/down/delete
+        btn_frame = tk.Frame(header, bg=self._CARD_BG)
+        btn_frame.pack(side=tk.RIGHT)
+        for text, cmd_factory in [("↑", lambda i: self._move_provider(i, -1)),
+                                   ("↓", lambda i: self._move_provider(i, 1)),
+                                   ("✕", lambda i: self._remove_provider(i))]:
+            idx = index  # capture current index
+            lb = tk.Label(btn_frame, text=text, bg=self._CARD_BG, fg=self._TEXT_SEC,
+                         font=("Microsoft YaHei", 9), padx=4, cursor="hand2")
+            lb.pack(side=tk.LEFT)
+            def make_handler(c=cmd_factory, i=idx):
+                return lambda e: c(i)()
+            lb.bind("<Button-1>", make_handler())
+            lb.bind("<Enter>", lambda e, l=lb: l.configure(fg=self._ACCENT))
+            lb.bind("<Leave>", lambda e, l=lb: l.configure(fg=self._TEXT_SEC))
+
+        # Fields
+        r = 1
+        self._label(card, "Label / 名称").grid(row=r, column=0, sticky=tk.W, padx=(16, 8), pady=3)
+        label_entry = self._entry(card, width=36)
+        label_entry.insert(0, p.get("label", ""))
+        label_entry.grid(row=r, column=1, sticky=tk.EW, padx=(0, 12), pady=3)
+        r += 1
+
+        self._label(card, "Endpoint / 地址").grid(row=r, column=0, sticky=tk.W, padx=(16, 8), pady=3)
+        ep_entry = self._entry(card, width=36)
+        ep_entry.insert(0, p.get("endpoint", ""))
+        ep_entry.grid(row=r, column=1, sticky=tk.EW, padx=(0, 12), pady=3)
+        r += 1
+
+        self._label(card, "API Key / 密钥").grid(row=r, column=0, sticky=tk.W, padx=(16, 8), pady=3)
+        key_entry = self._entry(card, show="*", width=36)
+        key_entry.insert(0, p.get("api_key", ""))
+        key_entry.grid(row=r, column=1, sticky=tk.EW, padx=(0, 12), pady=3)
+        r += 1
+
+        self._label(card, "Model / 模型").grid(row=r, column=0, sticky=tk.W, padx=(16, 8), pady=3)
+        model_entry = self._entry(card, width=36)
+        model_entry.insert(0, p.get("model", ""))
+        model_entry.grid(row=r, column=1, sticky=tk.EW, padx=(0, 12), pady=3)
+
+        self._provider_widgets.append({
+            "frame": card,
+            "enabled_var": en_var,
+            "label_entry": label_entry,
+            "ep_entry": ep_entry,
+            "key_entry": key_entry,
+            "model_entry": model_entry,
+        })
+
+    def _add_provider(self):
+        self.cfg.llm_providers.append({
+            "label": f"Provider {len(self.cfg.llm_providers) + 1}",
+            "endpoint": "", "api_key": "", "model": "", "enabled": True,
+        })
+        self._rebuild_provider_list()
+
+    def _remove_provider(self, index):
+        if 0 <= index < len(self.cfg.llm_providers):
+            del self.cfg.llm_providers[index]
+            self._rebuild_provider_list()
+
+    def _move_provider(self, index, direction):
+        new_idx = index + direction
+        if 0 <= new_idx < len(self.cfg.llm_providers):
+            self.cfg.llm_providers[index], self.cfg.llm_providers[new_idx] = \
+                self.cfg.llm_providers[new_idx], self.cfg.llm_providers[index]
+            self._rebuild_provider_list()
+
+    def _toggle_provider(self, index, enabled):
+        if 0 <= index < len(self.cfg.llm_providers):
+            self.cfg.llm_providers[index]["enabled"] = enabled
+
+    def _gather_providers(self):
+        """Read provider values from UI widgets back into cfg."""
+        for i, w in enumerate(self._provider_widgets):
+            if i < len(self.cfg.llm_providers):
+                self.cfg.llm_providers[i]["label"] = w["label_entry"].get().strip()
+                self.cfg.llm_providers[i]["endpoint"] = w["ep_entry"].get().strip()
+                self.cfg.llm_providers[i]["api_key"] = w["key_entry"].get().strip()
+                self.cfg.llm_providers[i]["model"] = w["model_entry"].get().strip()
+
+    def _test_all_providers(self):
+        """Test connectivity for all enabled providers + Baidu."""
+        self._gather_providers()
+        self._test_status.config(text="正在测试...", fg=self._TEXT_SEC)
+        self._test_btn.configure(state=tk.DISABLED)
+
+        def run_test():
+            import threading
+            from translator import test_connection, test_baidu_connection
+            results = []
+            for p in self.cfg.llm_providers:
+                if p.get("enabled", True):
+                    ok, msg = test_connection(p["endpoint"], p["api_key"], p["model"])
+                    results.append(f"{p['label']}: {'✓' if ok else '✗'} {msg}")
+            baidu_appid = self.baidu_appid_entry.get().strip()
+            baidu_secret = self.baidu_secret_entry.get().strip()
+            if baidu_appid and baidu_secret:
+                ok, msg = test_baidu_connection(baidu_appid, baidu_secret)
+                results.append(f"百度: {'✓' if ok else '✗'} {msg}")
+            self.top.after(0, lambda: self._on_test_result(
+                all("✓" in r for r in results),
+                "\n".join(results)
+            ))
+
+        threading.Thread(target=run_test, daemon=True).start()
+
     def _test_connection(self):
         backend = self.backend_var.get()
         if backend in ("baidu", "llm+baidu"):
@@ -989,25 +1133,26 @@ class SettingsDialog:
         self._test_status.config(text=msg, fg=self._GREEN if ok else self._RED)
 
     def _load_values(self):
-        self.ep_entry.insert(0, self.cfg.api_endpoint)
-        self.key_entry.insert(0, self.cfg.api_key)
-        self.model_entry.insert(0, self.cfg.api_model)
+        self.lang_var.set(self.cfg.target_language)
+        self.baidu_appid_entry.insert(0, self.cfg.baidu_appid)
+        self.baidu_secret_entry.insert(0, self.cfg.baidu_secret)
         self.name_entry.insert(0, self.cfg.player_name)
         self.opacity_scale.set(self.cfg.window_opacity)
         self._on_opacity_change(self.cfg.window_opacity)
         self.font_spin.set(str(self.cfg.font_size))
         self.max_spin.set(str(self.cfg.max_messages))
         self.backend_var.set(self.cfg.translation_backend)
-        self.lang_var.set(self.cfg.target_language)
-        self.baidu_appid_entry.insert(0, self.cfg.baidu_appid)
-        self.baidu_secret_entry.insert(0, self.cfg.baidu_secret)
+        self._rebuild_provider_list()
         self._on_backend_changed()
 
     def _save(self):
+        self._gather_providers()
+        first = self.cfg.llm_providers[0] if self.cfg.llm_providers else {}
         self.result = AppConfig(
-            api_endpoint=self.ep_entry.get().strip(),
-            api_key=self.key_entry.get().strip(),
-            api_model=self.model_entry.get().strip(),
+            llm_providers=self.cfg.llm_providers,
+            api_endpoint=first.get("endpoint", ""),
+            api_key=first.get("api_key", ""),
+            api_model=first.get("model", ""),
             system_prompt=self.cfg.system_prompt,
             player_name=self.name_entry.get().strip(),
             copy_hotkey=self._copy_cap.get().strip().lower() or "ctrl+c",
