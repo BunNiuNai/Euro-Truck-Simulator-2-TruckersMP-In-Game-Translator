@@ -425,6 +425,7 @@ class SettingsDialog:
 
         # Restore original opacity if dialog closed without saving
         self.top.protocol("WM_DELETE_WINDOW", self._on_close)
+        self.top.bind("<Destroy>", lambda e: self.top.unbind_all("<MouseWheel>"))
 
     # ------------------------------------------------------------------
     #  ui helpers
@@ -544,6 +545,7 @@ class SettingsDialog:
 
         self._tabs = {}
         self._tab_frames = {}
+        self._canvases = {}  # per-tab canvas refs for mousewheel
         tab_names = [
             ("api", "API 配置"),
             ("hotkeys", "快捷键"),
@@ -566,6 +568,9 @@ class SettingsDialog:
         self._content_area.grid(row=1, column=0, sticky="nsew")
         self._content_area.rowconfigure(0, weight=1)
         self._content_area.columnconfigure(0, weight=1)
+
+        # ---- global mousewheel for all tabs ----
+        self.top.bind_all("<MouseWheel>", self._on_settings_mousewheel)
 
         # ---- build each tab's frame ----
         self._build_api_tab()
@@ -594,6 +599,7 @@ class SettingsDialog:
         frame.columnconfigure(0, weight=1)
 
         canvas = tk.Canvas(frame, bg=self._PAGE_BG, highlightthickness=0, bd=0)
+        self._canvases["api"] = canvas
         scrollbar = ttk.Scrollbar(frame, orient=tk.VERTICAL, command=canvas.yview)
         canvas.configure(yscrollcommand=scrollbar.set)
         canvas.grid(row=0, column=0, sticky="nsew")
@@ -612,9 +618,6 @@ class SettingsDialog:
             canvas.itemconfig(inner_id, width=event.width)
         canvas.bind("<Configure>", _on_canvas_configure)
 
-        def _on_mousewheel(event):
-            canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
-        canvas.bind("<MouseWheel>", _on_mousewheel)
 
         # Section: provider list
         self._section_label(inner, "LLM PROVIDERS  /  语言模型提供商").pack(fill=tk.X, pady=(0, 8))
@@ -698,6 +701,7 @@ class SettingsDialog:
         frame.columnconfigure(0, weight=1)
 
         canvas = tk.Canvas(frame, bg=self._PAGE_BG, highlightthickness=0, bd=0)
+        self._canvases["hotkeys"] = canvas
         scrollbar = ttk.Scrollbar(frame, orient=tk.VERTICAL, command=canvas.yview)
         canvas.configure(yscrollcommand=scrollbar.set)
         canvas.grid(row=0, column=0, sticky="nsew")
@@ -715,10 +719,6 @@ class SettingsDialog:
         def _on_canvas_configure(event):
             canvas.itemconfig(inner_id, width=event.width)
         canvas.bind("<Configure>", _on_canvas_configure)
-
-        def _on_mousewheel(event):
-            canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
-        canvas.bind("<MouseWheel>", _on_mousewheel)
 
         # Card 2: Hotkeys
         self._section_label(inner, "HOTKEYS  /  快捷键").pack(fill=tk.X, pady=(0, 8))
@@ -744,6 +744,7 @@ class SettingsDialog:
         frame.columnconfigure(0, weight=1)
 
         canvas = tk.Canvas(frame, bg=self._PAGE_BG, highlightthickness=0, bd=0)
+        self._canvases["appearance"] = canvas
         scrollbar = ttk.Scrollbar(frame, orient=tk.VERTICAL, command=canvas.yview)
         canvas.configure(yscrollcommand=scrollbar.set)
         canvas.grid(row=0, column=0, sticky="nsew")
@@ -761,10 +762,6 @@ class SettingsDialog:
         def _on_canvas_configure(event):
             canvas.itemconfig(inner_id, width=event.width)
         canvas.bind("<Configure>", _on_canvas_configure)
-
-        def _on_mousewheel(event):
-            canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
-        canvas.bind("<MouseWheel>", _on_mousewheel)
 
         # Card 3: Appearance
         self._section_label(inner, "APPEARANCE  /  外观").pack(fill=tk.X, pady=(0, 8))
@@ -859,6 +856,12 @@ class SettingsDialog:
 
         self._pill_btn(btn_row, "📂 打开日志文件夹", self._open_log_dir, accent=False).pack(side=tk.LEFT)
         self._pill_btn(btn_row, "🔄 刷新", self._refresh_logs, accent=False).pack(side=tk.LEFT, padx=(8, 0))
+
+    def _on_settings_mousewheel(self, event) -> None:
+        """Global mousewheel handler — scrolls the active tab's canvas."""
+        canvas = self._canvases.get(self._active_tab)
+        if canvas is not None:
+            canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
 
     def _switch_tab(self, key: str) -> None:
         """Switch to the given tab."""
