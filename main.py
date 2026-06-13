@@ -941,9 +941,9 @@ class SettingsDialog:
     def _on_backend_changed(self, event=None):
         backend = self.backend_var.get()
         if backend in ("baidu", "llm+baidu"):
-            self.baidu_group.grid()
+            self.baidu_group.pack(fill=tk.X, pady=(0, 4))
         else:
-            self.baidu_group.grid_remove()
+            self.baidu_group.pack_forget()
 
     # ------------------------------------------------------------------
     #  provider list management
@@ -1082,49 +1082,6 @@ class SettingsDialog:
                 all("✓" in r for r in results),
                 "\n".join(results)
             ))
-
-        threading.Thread(target=run_test, daemon=True).start()
-
-    def _test_connection(self):
-        backend = self.backend_var.get()
-        if backend in ("baidu", "llm+baidu"):
-            appid = self.baidu_appid_entry.get().strip()
-            secret = self.baidu_secret_entry.get().strip()
-            if not appid or not secret:
-                self._test_status.config(text="请先填写百度 APP ID 和密钥", fg=self._RED)
-                return
-        if backend in ("llm", "llm+baidu"):
-            endpoint = self.ep_entry.get().strip()
-            api_key = self.key_entry.get().strip()
-            model = self.model_entry.get().strip()
-            if not endpoint or not api_key or not model:
-                self._test_status.config(text="请先填写 API 地址、密钥和模型", fg=self._RED)
-                return
-
-        self._test_status.config(text="正在测试连接...", fg=self._TEXT_SEC)
-        self._test_btn.configure(state=tk.DISABLED)
-
-        def run_test():
-            if backend == "llm+baidu":
-                ok1, msg1 = test_connection(
-                    self.ep_entry.get().strip(),
-                    self.key_entry.get().strip(),
-                    self.model_entry.get().strip())
-                ok2, msg2 = test_baidu_connection(
-                    self.baidu_appid_entry.get().strip(),
-                    self.baidu_secret_entry.get().strip())
-                ok = ok1 and ok2
-                msg = f"LLM: {msg1}\n百度: {msg2}"
-            elif backend == "baidu":
-                ok, msg = test_baidu_connection(
-                    self.baidu_appid_entry.get().strip(),
-                    self.baidu_secret_entry.get().strip())
-            else:
-                ok, msg = test_connection(
-                    self.ep_entry.get().strip(),
-                    self.key_entry.get().strip(),
-                    self.model_entry.get().strip())
-            self.top.after(0, lambda: self._on_test_result(ok, msg))
 
         threading.Thread(target=run_test, daemon=True).start()
 
