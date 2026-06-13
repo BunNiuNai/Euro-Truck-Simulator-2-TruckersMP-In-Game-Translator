@@ -30,13 +30,11 @@ def build():
         "--icon", ICON,
         "--add-data", f"{ICON};.",
         "--add-data", f"{os.path.join(PROJECT_DIR, 'prompts')};prompts",
-        "--add-data", f"{os.path.join(PROJECT_DIR, 'settings_ui')};settings_ui",
         "--hidden-import", "httpx",
         "--hidden-import", "message_types",
         "--hidden-import", "win32_constants",
         "--hidden-import", "message_display",
         "--hidden-import", "hotkey_manager",
-        "--hidden-import", "webview",
         "--clean",
         MAIN,
     ]
