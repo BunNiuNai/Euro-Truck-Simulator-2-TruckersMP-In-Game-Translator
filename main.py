@@ -390,6 +390,15 @@ class App:
             def get_logs(self):
                 log = get_logger()
                 return log.get_recent() if log else []
+            def live_update(self, changes):
+                """Apply appearance changes in real-time (no save)."""
+                if "window_opacity" in changes:
+                    app_overlay.set_opacity(float(changes["window_opacity"]))
+                if "font_size" in changes:
+                    app_overlay.set_font_size(int(changes["font_size"]))
+                if "window_mode" in changes:
+                    app_overlay.cfg.window_mode = changes["window_mode"]
+                    app_overlay._apply_mode()
             def open_log_dir(self):
                 log = get_logger()
                 if log:

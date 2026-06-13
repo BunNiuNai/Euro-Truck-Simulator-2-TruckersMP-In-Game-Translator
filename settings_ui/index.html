@@ -20,7 +20,7 @@
       <span class="sub-text">按顺序回退，支持并行竞速</span>
     </div>
     <div id="providerList" class="provider-list"></div>
-    <button id="addProviderBtn" class="secondary-btn" onclick="addProvider()">+ 添加 Provider</button>
+    <button class="secondary-btn" onclick="addProvider()">+ 添加 Provider</button>
   </section>
 
   <!-- 后端与语言 -->
@@ -29,11 +29,26 @@
     <div class="form-grid two-col">
       <div class="form-group">
         <label>翻译后端</label>
-        <select id="backend"></select>
+        <select id="backend">
+          <option value="llm">LLM (大模型)</option>
+          <option value="baidu">百度翻译</option>
+          <option value="llm+baidu">LLM + 百度监督</option>
+        </select>
       </div>
       <div class="form-group">
         <label>目标语言</label>
-        <select id="targetLang"></select>
+        <select id="targetLang">
+          <option value="zh-CN">简体中文</option>
+          <option value="en">English</option>
+          <option value="ja">日本語</option>
+          <option value="ko">한국어</option>
+          <option value="fr">Français</option>
+          <option value="de">Deutsch</option>
+          <option value="es">Español</option>
+          <option value="ru">Русский</option>
+          <option value="pt">Português</option>
+          <option value="it">Italiano</option>
+        </select>
       </div>
     </div>
   </section>
@@ -71,7 +86,7 @@
         <input id="sendHotkey" class="hotkey-input" type="text" placeholder="shift+y" readonly />
       </div>
     </div>
-    <p class="hint" style="color:#f44747">⚠️ 点击输入框后直接按下组合键进行捕获 · 绑定前请锁定大写</p>
+    <p class="hint" style="color:#f44747;">⚠️ 点击输入框后直接按下组合键进行捕获 · 绑定前请锁定大写</p>
   </section>
 
   <!-- 外观 -->
@@ -135,9 +150,7 @@
 
 <script>
 // ===== Hotkey Capture =====
-const MOD_NAMES = {16:'shift',17:'ctrl',18:'alt'};
 let capturingInput = null;
-
 document.querySelectorAll('.hotkey-input').forEach(inp => {
   inp.addEventListener('focus', function() {
     capturingInput = this;
@@ -153,13 +166,12 @@ document.querySelectorAll('.hotkey-input').forEach(inp => {
   inp.addEventListener('keydown', function(e) {
     e.preventDefault();
     if (!capturingInput) return;
+    if (['Shift','Control','Alt'].includes(e.key)) return;
     const mods = [];
     if (e.shiftKey) mods.push('shift');
     if (e.ctrlKey) mods.push('ctrl');
     if (e.altKey) mods.push('alt');
-    // Ignore modifier-only presses
-    if (['Shift','Control','Alt'].includes(e.key)) return;
-    const key = e.key.length === 1 ? e.key.toLowerCase() : e.key.toLowerCase();
+    const key = e.key.length === 1 ? e.key.toLowerCase() : e.key.toLowerCase().replace('arrow','');
     const combo = mods.length ? mods.join('+') + '+' + key : key;
     this.value = combo;
     this.blur();
@@ -192,60 +204,58 @@ function createProviderCard(p, index) {
 
 function rebuildProviderList() {
   const list = document.getElementById('providerList');
-  list.innerHTML = '';
+  list.innerHTML = '<span style="color:#858585">加载中...</span>';
   pywebview.api.get_providers().then(providers => {
-    providers.forEach((p, i) => list.appendChild(createProviderCard(p, i)));
+    list.innerHTML = '';
+    if (!providers || providers.length === 0) {
+      list.innerHTML = '<span style="color:#858585">尚未添加 Provider，点击下方按钮添加</span>';
+    } else {
+      providers.forEach((p, i) => list.appendChild(createProviderCard(p, i)));
+    }
+  }).catch(e => {
+    list.innerHTML = '<span style="color:#f44747">加载失败: ' + e + '</span>';
   });
 }
-function addProvider() {
-  pywebview.api.add_provider().then(rebuildProviderList);
-}
-function removeProvider(index) {
-  pywebview.api.remove_provider(index).then(rebuildProviderList);
-}
-function moveProvider(index, dir) {
-  pywebview.api.move_provider(index, dir).then(rebuildProviderList);
-}
+function addProvider() { pywebview.api.add_provider().then(rebuildProviderList); }
+function removeProvider(i) { pywebview.api.remove_provider(i).then(rebuildProviderList); }
+function moveProvider(i, d) { pywebview.api.move_provider(i, d).then(rebuildProviderList); }
 function gatherProviders() {
   const cards = document.querySelectorAll('.provider-card');
-  const providers = [];
-  cards.forEach(card => {
-    providers.push({
-      enabled: card.querySelector('.provider-enabled').checked,
-      label: card.querySelector('.provider-label').value.trim(),
-      endpoint: card.querySelector('.provider-ep').value.trim(),
-      api_key: card.querySelector('.provider-key').value.trim(),
-      model: card.querySelector('.provider-model').value.trim(),
-    });
-  });
-  return providers;
+  return Array.from(cards).map(card => ({
+    enabled: card.querySelector('.provider-enabled').checked,
+    label: card.querySelector('.provider-label').value.trim(),
+    endpoint: card.querySelector('.provider-ep').value.trim(),
+    api_key: card.querySelector('.provider-key').value.trim(),
+    model: card.querySelector('.provider-model').value.trim(),
+  }));
 }
 
 // ===== Load / Save =====
-function setVal(id, val) {
-  const el = document.getElementById(id);
-  if (el) el.value = val;
-}
 async function loadConfig() {
-  const cfg = await pywebview.api.load_config();
-  setVal('backend', cfg.translation_backend);
-  setVal('targetLang', cfg.target_language);
-  setVal('baiduAppid', cfg.baidu_appid || '');
-  setVal('baiduSecret', cfg.baidu_secret || '');
-  toggleBaidu();
-  setVal('copyHotkey', cfg.copy_hotkey);
-  setVal('enterHotkey', cfg.enter_hotkey);
-  setVal('sendHotkey', cfg.send_hotkey);
-  setVal('opacity', Math.round(cfg.window_opacity * 100));
-  document.getElementById('opacityVal').textContent = cfg.window_opacity.toFixed(2);
-  setVal('fontSize', cfg.font_size);
-  setVal('maxMessages', cfg.max_messages);
-  setVal('playerName', cfg.player_name || '');
-  const modeRadio = document.querySelector(`input[name="windowMode"][value="${cfg.window_mode}"]`);
-  if (modeRadio) modeRadio.checked = true;
-  document.getElementById('clickThrough').checked = cfg.click_through;
-  rebuildProviderList();
-  refreshLogs();
+  try {
+    const cfg = await pywebview.api.load_config();
+    document.getElementById('backend').value = cfg.translation_backend || 'llm';
+    document.getElementById('targetLang').value = cfg.target_language || 'zh-CN';
+    document.getElementById('baiduAppid').value = cfg.baidu_appid || '';
+    document.getElementById('baiduSecret').value = cfg.baidu_secret || '';
+    toggleBaidu();
+    document.getElementById('copyHotkey').value = cfg.copy_hotkey || 'ctrl+c';
+    document.getElementById('enterHotkey').value = cfg.enter_hotkey || 'enter';
+    document.getElementById('sendHotkey').value = cfg.send_hotkey || 'shift+y';
+    document.getElementById('opacity').value = Math.round((cfg.window_opacity || 0.8) * 100);
+    document.getElementById('opacityVal').textContent = (cfg.window_opacity || 0.8).toFixed(2);
+    document.getElementById('fontSize').value = cfg.font_size || 12;
+    document.getElementById('maxMessages').value = cfg.max_messages || 50;
+    document.getElementById('playerName').value = cfg.player_name || '';
+    const mode = cfg.window_mode || 'standalone';
+    const radio = document.querySelector(`input[name="windowMode"][value="${mode}"]`);
+    if (radio) radio.checked = true;
+    document.getElementById('clickThrough').checked = !!cfg.click_through;
+    await rebuildProviderList();
+    await refreshLogs();
+  } catch(e) {
+    console.error('loadConfig error:', e);
+  }
 }
 
 function toggleBaidu() {
@@ -254,6 +264,20 @@ function toggleBaidu() {
     (be === 'baidu' || be === 'llm+baidu') ? '' : 'none';
 }
 
+// ===== Live sync to overlay =====
+function syncOpacity(v) {
+  const val = parseInt(v) / 100;
+  document.getElementById('opacityVal').textContent = val.toFixed(2);
+  pywebview.api.live_update({ window_opacity: val });
+}
+function syncFontSize(v) {
+  pywebview.api.live_update({ font_size: parseInt(v) });
+}
+function syncMode(val) {
+  pywebview.api.live_update({ window_mode: val });
+}
+
+// ===== Save =====
 async function save() {
   const btn = document.getElementById('saveBtn');
   btn.disabled = true; btn.textContent = '⏳ 保存中...';
@@ -288,7 +312,7 @@ async function testAll() {
   result.textContent = '正在测试所有 Provider 和百度翻译...';
   try {
     const msg = await pywebview.api.test_all(gatherProviders());
-    result.textContent = msg;
+    result.textContent = msg.replace(/\n/g, ' | ');
   } catch(e) {
     result.textContent = '测试失败: ' + e;
   } finally {
@@ -297,19 +321,27 @@ async function testAll() {
 }
 
 async function refreshLogs() {
-  const logs = await pywebview.api.get_logs();
-  document.getElementById('logViewer').textContent = logs.join('\n');
+  try {
+    const logs = await pywebview.api.get_logs();
+    const viewer = document.getElementById('logViewer');
+    viewer.textContent = logs && logs.length ? logs.join('\n') : '(暂无日志)';
+  } catch(e) {
+    document.getElementById('logViewer').textContent = '加载日志失败: ' + e;
+  }
 }
 async function openLogDir() { await pywebview.api.open_log_dir(); }
 
 // Events
 document.getElementById('backend').addEventListener('change', toggleBaidu);
-document.getElementById('opacity').addEventListener('input', function() {
-  document.getElementById('opacityVal').textContent = (this.value / 100).toFixed(2);
+document.getElementById('opacity').addEventListener('input', function() { syncOpacity(this.value); });
+document.getElementById('fontSize').addEventListener('input', function() { syncFontSize(this.value); });
+document.querySelectorAll('input[name="windowMode"]').forEach(r => {
+  r.addEventListener('change', function() { syncMode(this.value); });
 });
 
+// Init
 loadConfig();
-function esc(s) { return s ? s.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;') : ''; }
+function esc(s) { return s ? String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/"/g,'&quot;') : ''; }
 </script>
 </body>
 </html>
