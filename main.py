@@ -687,10 +687,16 @@ class SettingsDialog:
         self.backend_combo.bind("<<ComboboxSelected>>", self._on_backend_changed)
         r = self._row(card_meta, r, "Backend / 翻译后端", self.backend_combo)
 
-        self.lang_var = tk.StringVar(value=self.cfg.target_language)
+        self._lang_map = {
+            "简体中文": "zh-CN", "English": "en", "日本語": "ja", "한국어": "ko",
+            "Français": "fr", "Deutsch": "de", "Español": "es",
+            "Русский": "ru", "Português": "pt", "Italiano": "it",
+        }
+        self._lang_rev = {v: k for k, v in self._lang_map.items()}
+        self.lang_var = tk.StringVar(value=self._lang_rev.get(self.cfg.target_language, "简体中文"))
         self.lang_combo = ttk.Combobox(
             card_meta._inner, textvariable=self.lang_var,
-            values=["zh-CN", "en", "ja", "ko", "fr", "de", "es", "ru", "pt", "it"],
+            values=list(self._lang_map.keys()),
             state="readonly", width=18, font=("Microsoft YaHei", 10))
         r = self._row(card_meta, r, "Target Language / 目标语言", self.lang_combo)
 
@@ -1136,7 +1142,7 @@ class SettingsDialog:
         self._test_status.config(text=msg, fg=self._GREEN if ok else self._RED)
 
     def _load_values(self):
-        self.lang_var.set(self.cfg.target_language)
+        self.lang_var.set(self._lang_rev.get(self.cfg.target_language, "简体中文"))
         self.baidu_appid_entry.insert(0, self.cfg.baidu_appid)
         self.baidu_secret_entry.insert(0, self.cfg.baidu_secret)
         self.name_entry.insert(0, self.cfg.player_name)
@@ -1167,7 +1173,7 @@ class SettingsDialog:
             window_mode=self.mode_var.get(),
             click_through=self.click_var.get(),
             translation_backend=self.backend_var.get(),
-            target_language=self.lang_var.get(),
+            target_language=self._lang_map.get(self.lang_var.get(), "zh-CN"),
             baidu_appid=self.baidu_appid_entry.get().strip(),
             baidu_secret=self.baidu_secret_entry.get().strip(),
         )
