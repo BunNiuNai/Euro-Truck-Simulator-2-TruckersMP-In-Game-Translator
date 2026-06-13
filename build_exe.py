@@ -12,7 +12,7 @@ PROJECT_DIR = os.path.dirname(os.path.abspath(__file__))
 MAIN = os.path.join(PROJECT_DIR, "main.py")
 NAME = "ETS2_Chat_Translator"
 ICON = os.path.join(PROJECT_DIR, "icon.ico")
-ICON_SRC = os.path.join(PROJECT_DIR, "1781289472175..png")
+ICON_SRC = os.path.join(PROJECT_DIR, "xintubiao.png")
 
 
 def build():
