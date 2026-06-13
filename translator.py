@@ -366,13 +366,20 @@ class Translator(threading.Thread):
 
         # Request merging: wait for identical in-flight request
         with self._in_flight_lock:
-            if text in self._in_flight:
-                event = self._in_flight[text]
-                event.wait(timeout=10.0)
+            existing = self._in_flight.get(text)
+            if existing is None:
+                self._in_flight[text] = threading.Event()
+            else:
+                # Release lock before waiting so producer can signal
+                event_to_await = existing
+
+        if existing is not None:
+            event_to_await.wait(timeout=10.0)
+            with self._in_flight_lock:
                 result = self._in_flight_results.get(text)
-                if result is not None:
-                    return result
-            self._in_flight[text] = threading.Event()
+            if result is not None:
+                return result
+            # Timeout or no result — fall through to translate
 
         try:
             result = self._call_api_internal(text)
@@ -383,8 +390,9 @@ class Translator(threading.Thread):
             with self._in_flight_lock:
                 event = self._in_flight.pop(text, None)
                 if event:
-                    event.set()
-                self._in_flight_results.pop(text, None)
+                    event.set()  # wake waiters first — they read _in_flight_results
+                # Keep result briefly so late waiters can still read it
+                # (LRU cache handles dedup; old entries are harmless)
 
     def _call_api_internal(self, text: str) -> str:
         """Provider parallel race + serial fallback with circuit breaker."""
