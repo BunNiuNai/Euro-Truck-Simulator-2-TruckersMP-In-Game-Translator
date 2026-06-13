@@ -127,6 +127,12 @@ class OverlayWindow:
         self._stat_self = _make_stat(self.stats_frame, "跳过(自己): ")
         self._stat_saved = _make_stat(self.stats_frame, "节省: ")
 
+        # Beijing time — bottom-right corner
+        self._time_label = tk.Label(self.stats_frame, text="", bg="#0f0f0f", fg="#858585",
+                                     font=("Microsoft YaHei", 9), padx=8)
+        self._time_label.pack(side=tk.RIGHT)
+        self._update_clock()
+
         # Input area (packed second, auto-sizes to fit children)
         self.input_frame = tk.Frame(self.outer, bg=BG)
         self.input_frame.pack(side=tk.BOTTOM, fill=tk.X)
@@ -595,6 +601,13 @@ class OverlayWindow:
         self.notice_label.config(text=text, fg=fg, bg=bg)
         self.notice_label.pack(side=tk.TOP, fill=tk.X, padx=4, pady=(2, 0), before=self.entry_row)
         self._notice_after = self.root.after(duration_ms, self.notice_label.pack_forget)
+
+    def _update_clock(self):
+        """Update Beijing time display every second."""
+        from datetime import datetime, timezone, timedelta
+        beijing = datetime.now(timezone.utc).astimezone(timezone(timedelta(hours=8)))
+        self._time_label.config(text=beijing.strftime("北京时间 %H:%M:%S"))
+        self.root.after(1000, self._update_clock)
 
     def _update_stats(self):
         if not self.stats_ref:
