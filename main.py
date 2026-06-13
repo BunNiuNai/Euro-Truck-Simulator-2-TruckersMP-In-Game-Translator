@@ -95,8 +95,8 @@ class App:
             self.cfg.player_name = name
             save_config(self.cfg)
             self.overlay.root.after(0, lambda: self.overlay.add_message(
-                "System", f"已识别你的游戏ID: {name}",
-                f"已自动识别你的游戏ID为 {name}，你的消息将不会被翻译。可在设置中修改。",
+                "System", f"已识别你的游戏昵称: {name}",
+                f"已自动识别你的游戏昵称为 {name}，你的消息将不会被翻译。可在设置中修改。",
                 is_self=True
             ))
         if not name:
@@ -840,7 +840,7 @@ class SettingsDialog:
         r = self._row(card3, r, "Max Messages / 最大消息数", self.max_spin)
 
         self.name_entry = self._entry(card3)
-        r = self._row(card3, r, "Game Name / 游戏 ID", self.name_entry)
+        r = self._row(card3, r, "Game Name / 游戏昵称", self.name_entry)
 
         self.mode_var = tk.StringVar(value=self.cfg.window_mode)
         mode_frame = tk.Frame(card3._inner, bg=self._CARD_BG)

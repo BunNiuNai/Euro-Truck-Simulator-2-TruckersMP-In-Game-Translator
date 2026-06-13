@@ -205,7 +205,7 @@ class AppConfig:
     window_opacity: float = 0.80
     font_size: int = 12
     max_messages: int = 50
-    player_name: str = ""  # auto-detected or manually set in-game name
+    player_name: str = ""  # auto-detected or manually set in-game nickname
     window_mode: str = "standalone"  # "standalone" or "overlay"
     click_through: bool = False  # only in overlay mode
     win_x: int = -1  # saved window x, -1 means auto-center
