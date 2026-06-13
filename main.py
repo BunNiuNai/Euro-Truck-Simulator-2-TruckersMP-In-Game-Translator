@@ -22,6 +22,10 @@ def _ensure_single_instance():
     window to front and exit this process. Returns True if this is the first instance."""
     ctypes.windll.kernel32.CreateMutexW(None, True, _SINGLE_MUTEX_NAME)
     if ctypes.windll.kernel32.GetLastError() == 183:  # ERROR_ALREADY_EXISTS
+        from logger import get_logger
+        log = get_logger()
+        if log:
+            log.warn("SYS", "检测到重复实例，已退出")
         # Find and restore the existing window
         hwnd = ctypes.windll.user32.FindWindowW(None, None)
         # Generic approach: just alert and exit
@@ -31,11 +35,16 @@ def _ensure_single_instance():
     return True
 from translator import Translator, test_connection, test_baidu_connection
 from config import VERSION
+from logger import init_logger, get_logger
 import update as updater
 
 class App:
     def __init__(self):
         self.cfg = load_config()
+
+        # Initialize logger
+        self._log = init_logger()
+        self._log.info("SYS", f"翻译器启动 | {VERSION} | Python {sys.version.split()[0]} | 配置: {CONFIG_PATH}")
 
         # Initialize debug logging
         import input_sender
@@ -162,6 +171,9 @@ class App:
     def _tray_click_through(self):
         self.cfg.click_through = not self.cfg.click_through
         save_config(self.cfg)
+        log = get_logger()
+        if log:
+            log.info("SYS", f"鼠标穿透: {'开' if self.cfg.click_through else '关'}")
         self.overlay.root.after(0, lambda: self.overlay._set_click_through(self.cfg.click_through))
 
     def _tray_settings(self):
@@ -181,6 +193,9 @@ class App:
         if self._shutting_down:
             return
         self._shutting_down = True
+        log = get_logger()
+        if log:
+            log.info("SYS", "翻译器关闭")
         self.overlay._save_position()
         save_config(self.cfg)
         if self.tray:
@@ -288,6 +303,9 @@ class App:
         else:
             self.cfg.window_mode = "overlay"
         save_config(self.cfg)
+        log = get_logger()
+        if log:
+            log.info("SYS", f"窗口模式切换: {self.cfg.window_mode}")
         self.overlay._apply_mode()
 
     def _open_settings(self):
