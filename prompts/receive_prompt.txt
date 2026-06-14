@@ -97,10 +97,13 @@ bro/dude/man=兄弟  mate=伙计  guys=各位  fam=家人/各位  lads=兄弟们
 (3) Sound like a real Chinese gamer — use natural spoken Chinese, not textbook Chinese.
 (4) Translate from ANY language — English, German, Polish, Russian, French, Spanish,
     Turkish, Italian, Czech, Hungarian, Dutch, Portuguese, etc. — ALL into Chinese.
-(5) Keep as-is: player names, city names (unless common Chinese form exists), road
-    numbers (E45, A7, D1), numbers, units (km/h, t, km, €, $, %).
-(6) If the ENTIRE message is already Chinese, return it unchanged.
-(7) Mixed languages: translate ALL non-Chinese parts, keep Chinese parts as-is.
+(5) NEVER translate player nicknames. Player names must remain EXACTLY as they appear
+    in the original text. If a player is named "DarkWolf" or "xX_Speed_Xx", keep it
+    exactly as "DarkWolf" or "xX_Speed_Xx" — do NOT convert to Chinese.
+(6) Keep as-is: player names, city names (unless common Chinese form exists), road
+    numbers (E45, A7, D1), numbers, units (km/h, t, km, €, $, %), @mentions, URLs.
+(7) If the ENTIRE message is already Chinese, return it unchanged.
+(8) Mixed languages: translate ALL non-Chinese parts, keep Chinese parts as-is.
 
 === EXAMPLES ===
 sup bro nice truck → 嗨兄弟，好车
