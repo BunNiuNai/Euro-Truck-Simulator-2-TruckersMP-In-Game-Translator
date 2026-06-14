@@ -210,8 +210,8 @@ class OverlayWindow:
         self.text.pack(side=tk.LEFT, fill=tk.BOTH, expand=True)
         vbar.pack(side=tk.RIGHT, fill=tk.Y, before=self.text)
 
-        # Save position on window resize (standalone mode)
-        self.root.bind("<Configure>", lambda e: self._schedule_save_position())
+        # Save position + reapply rounded corners on window resize
+        self.root.bind("<Configure>", lambda e: (self._schedule_save_position(), self._set_rounded_corners()))
 
         # Resize grip triangle drawn in text widget corner
         self._grip_tag = "grip_marker"
@@ -444,6 +444,11 @@ class OverlayWindow:
         dy = event.y_root - self._my
 
         if self._edge_code:
+            # Clear old window region before resize to avoid clipping artifacts
+            try:
+                ctypes.windll.user32.SetWindowRgn(self.root.winfo_id(), 0, True)
+            except Exception:
+                pass
             x, y = self.root.winfo_x(), self.root.winfo_y()
             w, h = self.root.winfo_width(), self.root.winfo_height()
             if "e" in self._edge_code: w = max(self.MIN_W, w + dx)
@@ -459,13 +464,14 @@ class OverlayWindow:
             self.root.geometry(f"{w}x{h}+{x}+{y}")
             self._mx = event.x_root
             self._my = event.y_root
-            self.root.update_idletasks()  # force layout reflow after resize
+            self.root.update_idletasks()
+            self._set_rounded_corners()  # reapply rounded corners at new size
             self._schedule_save_position()
         else:
             x = self._start_x + event.x_root - self._mx
             y = self._start_y + event.y_root - self._my
             self.root.geometry(f"+{x}+{y}")
-            self.root.update_idletasks()  # force layout reflow after drag
+            self.root.update_idletasks()
             self._schedule_save_position()
 
     # ----- message handling -----
