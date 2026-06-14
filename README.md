@@ -235,7 +235,7 @@ python build_exe.py
 |:---|:---|:---|
 | 🔀 **翻译后端** | LLM / 百度 / LLM+百度混合 | `LLM + 百度监督` |
 | 🌐 **目标语言** | 翻译目标语言 | `简体中文` |
-| 🔤 **百度 APP ID** | 百度翻译 API 的 APP ID | `20250101001234567` |
+| 🔤 **百度 APP ID** | 百度翻译 API 的 APP ID | `1234567899887654` |
 | 🔐 **百度 Secret** | 百度翻译 API 的密钥 | `xxxxxx` |
 | 🎨 **窗口透明度** | 0.10 ~ 1.00 | `0.80` |
 | 🔤 **字体大小** | 聊天显示字体大小 | `12` |
@@ -422,5 +422,5 @@ python build_exe.py
 </p>
 
 <p align="center">
-  <sub>🚛 Made with ❤️ for the ETS2 TruckersMP community</sub>
+  
 </p>
