@@ -162,7 +162,7 @@ class ChatMonitor(threading.Thread):
             if self._log_path is None or not os.path.exists(self._log_path):
                 self._log_path = find_latest_log()
                 if self._log_path:
-                    self._last_size = 0  # read entire file to catch existing messages
+                    self._last_size = os.path.getsize(self._log_path)  # skip history on startup
                     self.status = f"已找到日志: {os.path.basename(self._log_path)}"
                     log = get_logger()
                     if log:
