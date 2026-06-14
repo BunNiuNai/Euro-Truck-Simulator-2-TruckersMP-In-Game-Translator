@@ -495,6 +495,15 @@ class OverlayWindow:
 
     def add_message(self, player_name: str, original: str, translated: str, is_self: bool = False):
         self._messages.append((player_name, original, translated, is_self))
+        # Write to message log file
+        try:
+            from logger import get_logger
+            log = get_logger()
+            if log:
+                prefix = "(You) " if is_self else ""
+                log.message_log(f"[{prefix}{player_name}] {original} → {translated}")
+        except Exception:
+            pass
         if len(self._messages) > self.cfg.max_messages:
             trimmed = len(self._messages) - self.cfg.max_messages
             self._messages = self._messages[-self.cfg.max_messages:]

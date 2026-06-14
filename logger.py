@@ -46,18 +46,17 @@ class Logger:
         )
 
     def _cleanup_old_logs(self) -> None:
-        """Keep only the most recent MAX_LOG_FILES log files."""
+        """Remove log files older than 7 days (weekly cleanup)."""
         try:
-            files = [
-                f for f in os.listdir(self._log_dir)
-                if f.startswith("translator_") and f.endswith(".log")
-            ]
-            files.sort(reverse=True)
-            for f in files[self._max_files:]:
-                try:
-                    os.remove(os.path.join(self._log_dir, f))
-                except OSError:
-                    pass
+            cutoff = datetime.now().timestamp() - 7 * 86400
+            for f in os.listdir(self._log_dir):
+                if (f.startswith("translator_") or f.startswith("messages_")) and f.endswith(".log"):
+                    fpath = os.path.join(self._log_dir, f)
+                    try:
+                        if os.path.getmtime(fpath) < cutoff:
+                            os.remove(fpath)
+                    except OSError:
+                        pass
         except OSError:
             pass
 
@@ -114,6 +113,22 @@ class Logger:
 
     def error(self, tag: str, message: str) -> None:
         self._log(tag, "ERROR", message)
+
+    # --- Message logging (chat translations, separate file) ---
+
+    def message_log(self, line: str) -> None:
+        """Write a translated message to the message log file."""
+        self._cleanup_old_logs()
+        path = os.path.join(
+            self._log_dir,
+            f"messages_{datetime.now().strftime('%Y-%m-%d')}.log",
+        )
+        ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        try:
+            with open(path, "a", encoding="utf-8") as f:
+                f.write(f"{ts} {line}\n")
+        except OSError:
+            pass
 
     # --- UI-facing ---
 
