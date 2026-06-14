@@ -901,6 +901,7 @@ class SettingsDialog:
         btn_row = tk.Frame(frame, bg=self._PAGE_BG)
         btn_row.grid(row=1, column=0, columnspan=2, sticky="ew", pady=(8, 4), padx=8)
         self._pill_btn(btn_row, "🔄 刷新", self._refresh_messages, accent=False).pack(side=tk.LEFT)
+        self._pill_btn(btn_row, "📂 打开日志文件夹", self._open_log_dir, accent=False).pack(side=tk.LEFT, padx=(8, 0))
 
     def _refresh_messages(self):
         """Reload message log from the overlay window."""
