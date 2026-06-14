@@ -459,11 +459,13 @@ class OverlayWindow:
             self.root.geometry(f"{w}x{h}+{x}+{y}")
             self._mx = event.x_root
             self._my = event.y_root
+            self.root.update_idletasks()  # force layout reflow after resize
             self._schedule_save_position()
         else:
             x = self._start_x + event.x_root - self._mx
             y = self._start_y + event.y_root - self._my
             self.root.geometry(f"+{x}+{y}")
+            self.root.update_idletasks()  # force layout reflow after drag
             self._schedule_save_position()
 
     # ----- message handling -----
