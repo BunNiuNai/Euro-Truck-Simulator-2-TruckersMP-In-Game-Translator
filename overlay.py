@@ -539,8 +539,8 @@ class OverlayWindow:
 
         self._displayed_count = new_total
 
-        # Trim overflow lines from the top
-        max_lines = self.cfg.max_messages
+        # Trim overflow lines from the top (2 lines per message: content + separator)
+        max_lines = self.cfg.max_messages * 2
         total = int(self.text.index("end-1c").split(".")[0])
         if total > max_lines:
             self.text.delete("1.0", f"{total - max_lines + 1}.0")

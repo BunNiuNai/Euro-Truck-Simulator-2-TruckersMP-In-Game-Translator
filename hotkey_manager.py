@@ -188,13 +188,7 @@ class HotkeyManager:
 
     def update_send_hotkey(self, new_hotkey: str) -> None:
         """Re-register hotkey after user changes the combo."""
-        self._running = False
-        if self._hwnd:
-            user32.UnregisterHotKey(self._hwnd, self._hotkey_id)
-            user32.PostMessageW(self._hwnd, WM_CLOSE, 0, 0)
-        if self._thread and self._thread.is_alive():
-            self._thread.join(timeout=2.0)
-
+        self.stop()
         self.cfg.send_hotkey = new_hotkey
         self.reset_hint()
         self.start()

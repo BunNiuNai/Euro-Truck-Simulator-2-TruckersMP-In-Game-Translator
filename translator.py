@@ -40,19 +40,22 @@ class LRUCache:
     def __init__(self, maxsize: int = CACHE_SIZE):
         self.maxsize = maxsize
         self._cache = OrderedDict()
+        self._lock = threading.Lock()
 
     def get(self, key: str) -> str | None:
-        if key in self._cache:
-            self._cache.move_to_end(key)
-            return self._cache[key]
-        return None
+        with self._lock:
+            if key in self._cache:
+                self._cache.move_to_end(key)
+                return self._cache[key]
+            return None
 
     def put(self, key: str, value: str):
-        if key in self._cache:
-            self._cache.move_to_end(key)
-        self._cache[key] = value
-        while len(self._cache) > self.maxsize:
-            self._cache.popitem(last=False)
+        with self._lock:
+            if key in self._cache:
+                self._cache.move_to_end(key)
+            self._cache[key] = value
+            while len(self._cache) > self.maxsize:
+                self._cache.popitem(last=False)
 
 
 class Translator(threading.Thread):
@@ -65,13 +68,22 @@ class Translator(threading.Thread):
         self.out_queue = out_queue
         self._stop_event = threading.Event()
         self._cache = LRUCache(CACHE_SIZE)
-        self._client = httpx.Client(timeout=8.0)
+        self._local = threading.local()  # per-thread httpx client (httpx.Client is NOT thread-safe)
         self.stats = TranslationStats()
         self._msg_since_log = 0  # counter for periodic stats logging
         self._provider_health: dict[str, ProviderHealth] = {}
+        self._health_lock = threading.Lock()
         self._in_flight: dict[str, threading.Event] = {}
         self._in_flight_results: dict[str, str] = {}
         self._in_flight_lock = threading.Lock()
+
+    def _get_client(self) -> httpx.Client:
+        """Get or create a per-thread httpx client."""
+        client = getattr(self._local, 'client', None)
+        if client is None:
+            self._local.client = httpx.Client(timeout=8.0)
+            return self._local.client
+        return client
 
     def run(self):
         import os
@@ -91,13 +103,16 @@ class Translator(threading.Thread):
                     if mtime != _last_config_mtime:
                         _last_config_mtime = mtime
                         self.cfg = load_config()
-                        self._client.close()
-                        self._client = httpx.Client(timeout=8.0)
+                        self._local.client = None
                         log = get_logger()
                         if log:
                             log.info("SYS", "配置已热重载")
                 except OSError:
                     pass
+                # Periodic cleanup: clear stale in-flight results (>300 entries)
+                with self._in_flight_lock:
+                    if len(self._in_flight_results) > 300:
+                        self._in_flight_results.clear()
 
             try:
                 timeout = 0.3
@@ -303,32 +318,34 @@ class Translator(threading.Thread):
 
     def _is_cooling(self, label: str) -> bool:
         """Check if a provider is in cooldown (circuit breaker open)."""
-        health = self._provider_health.get(label)
-        if health and health.cool_until > 0:
-            if time.monotonic() < health.cool_until:
-                return True
+        with self._health_lock:
+            health = self._provider_health.get(label)
+            if health and health.cool_until > 0:
+                if time.monotonic() < health.cool_until:
+                    return True
         return False
 
     def _note_provider_result(self, label: str, success: bool) -> None:
-        """Update provider health after a translation attempt."""
-        if label not in self._provider_health:
-            self._provider_health[label] = ProviderHealth()
-        h = self._provider_health[label]
-        log = get_logger()
+        """Update provider health after a translation attempt (thread-safe)."""
+        with self._health_lock:
+            if label not in self._provider_health:
+                self._provider_health[label] = ProviderHealth()
+            h = self._provider_health[label]
+            log = get_logger()
 
-        if success:
-            if h.failures > 0:
-                if log:
-                    log.info("LLM", f"Provider {label} 已恢复（之前 {h.failures} 次失败）")
-            h.failures = 0
-            h.cool_until = 0
-        else:
-            h.failures += 1
-            if h.failures >= 3:
-                duration = min(30 * (2 ** (h.failures - 3)), 120)
-                h.cool_until = time.monotonic() + duration
-                if log:
-                    log.warn("LLM", f"Provider {label} 进入冷却 {duration}s（连续 {h.failures} 次失败）")
+            if success:
+                if h.failures > 0:
+                    if log:
+                        log.info("LLM", f"Provider {label} 已恢复（之前 {h.failures} 次失败）")
+                h.failures = 0
+                h.cool_until = 0
+            else:
+                h.failures += 1
+                if h.failures >= 3:
+                    duration = min(30 * (2 ** (h.failures - 3)), 120)
+                    h.cool_until = time.monotonic() + duration
+                    if log:
+                        log.warn("LLM", f"Provider {label} 进入冷却 {duration}s（连续 {h.failures} 次失败）")
 
     # ── Provider calling ──
 
@@ -353,7 +370,7 @@ class Translator(threading.Thread):
             "Authorization": f"Bearer {provider['api_key']}",
         }
 
-        resp = self._client.post(endpoint, json=payload, headers=headers)
+        resp = self._get_client().post(endpoint, json=payload, headers=headers)
         resp.raise_for_status()
         data = resp.json()
         return data["choices"][0]["message"]["content"].strip()
@@ -476,7 +493,7 @@ class Translator(threading.Thread):
             "Authorization": f"Bearer {self.cfg.api_key}",
         }
 
-        resp = self._client.post(self.cfg.api_endpoint, json=payload, headers=headers)
+        resp = self._get_client().post(self.cfg.api_endpoint, json=payload, headers=headers)
         resp.raise_for_status()
         data = resp.json()
         return data["choices"][0]["message"]["content"].strip()
@@ -514,7 +531,10 @@ class Translator(threading.Thread):
 
     def stop(self):
         self._stop_event.set()
-        self._client.close()
+        # Close per-thread client if one was created
+        client = getattr(self._local, 'client', None)
+        if client is not None:
+            client.close()
 
 
 def test_connection(endpoint: str, api_key: str, model: str) -> tuple:

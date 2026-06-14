@@ -34,6 +34,8 @@ class Logger:
         self._buffer_size = buffer_size
         self._lock = threading.Lock()
         self._file = None
+        self._current_date = ""  # track date for midnight rollover
+        self._last_cleanup = 0.0  # throttle cleanup to once per hour
         os.makedirs(self._log_dir, exist_ok=True)
         self._cleanup_old_logs()
 
@@ -88,7 +90,11 @@ class Logger:
 
             self._rotate_if_needed()
             try:
-                if self._file is None:
+                today = datetime.now().strftime('%Y-%m-%d')
+                if self._file is None or today != self._current_date:
+                    if self._file is not None:
+                        self._file.close()
+                    self._current_date = today
                     self._file = open(self._current_log_path(), "a", encoding="utf-8")
                 self._file.write(line + "\n")
                 self._file.flush()
@@ -118,7 +124,11 @@ class Logger:
 
     def message_log(self, line: str) -> None:
         """Write a translated message to the message log file."""
-        self._cleanup_old_logs()
+        # Throttle cleanup: at most once per hour
+        now = datetime.now().timestamp()
+        if now - self._last_cleanup > 3600:
+            self._last_cleanup = now
+            self._cleanup_old_logs()
         path = os.path.join(
             self._log_dir,
             f"messages_{datetime.now().strftime('%Y-%m-%d')}.log",

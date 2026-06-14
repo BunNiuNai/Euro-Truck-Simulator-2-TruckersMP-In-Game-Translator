@@ -91,7 +91,7 @@ def download_update(url: str, progress_cb: callable | None = None) -> str | None
     """Download new exe to a temp path. Tries direct URL then mirrors.
     progress_cb(percent: int) is called during download.
     """
-    tmp = tempfile.mktemp(suffix=".exe", prefix="ets2_update_")
+    tmp = tempfile.NamedTemporaryFile(suffix=".exe", prefix="ets2_update_", delete=False).name
     log = get_logger()
 
     urls_to_try = [url] + [f"{m}{url}" for m in _DOWNLOAD_MIRRORS]

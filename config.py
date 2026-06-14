@@ -100,14 +100,14 @@ def _maybe_encrypt(field: str, value: str) -> str:
 
 
 def _maybe_decrypt(field: str, value: str) -> str:
-    """Decrypt value if it is encrypted."""
+    """Decrypt value if it is encrypted. Returns empty on failure (not ciphertext)."""
     if not value:
         return value
     if _is_encrypted(value):
         try:
             return _dpapi_decrypt(value[len(_ENC_PREFIX):])
         except Exception:
-            return value
+            return ""  # DPAPI key changed (e.g. new PC) — clear, user must re-enter
     return value
 
 
@@ -237,8 +237,14 @@ def load_config():
         save_config(cfg)
         return cfg
 
-    with open(CONFIG_PATH, "r", encoding="utf-8") as f:
-        data = json.load(f)
+    try:
+        with open(CONFIG_PATH, "r", encoding="utf-8") as f:
+            data = json.load(f)
+    except (json.JSONDecodeError, OSError):
+        # Config file corrupted — start fresh with defaults
+        cfg = AppConfig()
+        save_config(cfg)
+        return cfg
 
     defaults = asdict(AppConfig())
     # Merge loaded data over defaults (allow partial configs)

@@ -146,7 +146,7 @@ class ChatMonitor(threading.Thread):
         if latest and latest != self._log_path:
             old = os.path.basename(self._log_path) if self._log_path else "None"
             self._log_path = latest
-            self._last_size = os.path.getsize(latest)
+            self._last_size = 0  # read entire new file to avoid missing messages
             self._seen.clear()
             self.status = f"已切换日志: {os.path.basename(latest)} (旧: {old})"
             log = get_logger()
@@ -162,7 +162,7 @@ class ChatMonitor(threading.Thread):
             if self._log_path is None or not os.path.exists(self._log_path):
                 self._log_path = find_latest_log()
                 if self._log_path:
-                    self._last_size = os.path.getsize(self._log_path)
+                    self._last_size = 0  # read entire file to catch existing messages
                     self.status = f"已找到日志: {os.path.basename(self._log_path)}"
                     log = get_logger()
                     if log:

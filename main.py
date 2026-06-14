@@ -362,7 +362,7 @@ class HotkeyCapture(tk.Frame):
         mods = []
         if event.state & 0x0001: mods.append("shift")
         if event.state & 0x0004: mods.append("ctrl")
-        if event.state & 0x20000: mods.append("alt")
+        if event.state & (0x20000 | 0x0008): mods.append("alt")  # 0x20000=Mod3(Tk/Win), 0x0008=Mod1
         key = event.keysym
         # Ignore modifier-only presses
         if key.lower() in ("shift_l", "shift_r", "control_l", "control_r", "alt_l", "alt_r"):
