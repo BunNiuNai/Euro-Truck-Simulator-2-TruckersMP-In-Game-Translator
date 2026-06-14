@@ -128,8 +128,8 @@ class OverlayWindow:
         self._stat_saved = _make_stat(self.stats_frame, "节省: ")
 
         # Beijing time — bottom-right corner
-        self._time_label = tk.Label(self.stats_frame, text="", bg="#0f0f0f", fg="#858585",
-                                     font=("Microsoft YaHei", 9), padx=8)
+        self._time_label = tk.Label(self.stats_frame, text="", bg="#0f0f0f", fg="#ffffff",
+                                     font=("Microsoft YaHei", 9, "bold"), padx=8)
         self._time_label.pack(side=tk.RIGHT)
         self._update_clock()
 
