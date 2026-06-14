@@ -1,26 +1,85 @@
 MIT License with Non-Commercial Restriction
 MIT 许可证（含非商业使用限制）
 
-Copyright (c) 2025-2026 ETS2 Chat Translator Contributors
+================================================================================
+Copyright (c) 2025-2026 BunNiuNai (ETS2 Chat Translator Contributors)
+================================================================================
 
+                              🚛 使用条款 · Terms of Use
+                              ═══════════════════════════
+
+✅ 允许 · Allowed
+────────────────────────────────────────────────────────────────────────────────
+  ✔ 个人使用完全免费
+  ✔ 下载、复制、分发给他人（免费）
+  ✔ 修改源代码及功能
+  ✔ 在个人设备上运行、调试
+  ✔ 提交 Issue、Pull Request 参与贡献
+
+  ✔ Free for personal use
+  ✔ Download, copy, and share with others (free of charge)
+  ✔ Modify source code and functionality
+  ✔ Run and debug on personal devices
+  ✔ Submit Issues and Pull Requests
+
+❌ 禁止 · Prohibited
+────────────────────────────────────────────────────────────────────────────────
+  ✘ 商业用途：任何以盈利为目的的使用
+  ✘ 收费分发：出售本软件或修改版本
+  ✘ 捆绑销售：将本软件作为付费产品或服务的一部分
+  ✘ 付费使用：对软件的访问或使用收取任何费用
+  ✘ 未经版权持有人明确书面许可的任何商业行为
+
+  ✘ Commercial use of any kind
+  ✘ Selling copies of the Software or modified versions
+  ✘ Bundling as part of any paid product or service
+  ✘ Charging for access to or use of the Software
+  ✘ Any commercial exploitation without explicit written permission
+
+⚠️ 署名要求 · Attribution
+────────────────────────────────────────────────────────────────────────────────
+  在分发或修改本软件时，必须在显著位置保留原始作者署名（BunNiuNai）及本许可证声明。
+
+  When distributing or modifying this Software, you must retain the original
+  author attribution (BunNiuNai) and this license notice in a prominent position.
+
+⚠️ 免责声明 · Disclaimer
+────────────────────────────────────────────────────────────────────────────────
+  本软件按"原样"提供，不提供任何形式的明示或暗示保证。在任何情况下，作者或版权
+  持有人均不对因使用本软件而产生的任何直接或间接损失承担责任，包括但不限于：
+
+  · 游戏账号被封禁导致的损失
+  · 充值/虚拟物品/金钱相关的损失
+  · 数据丢失或设备损坏
+  · 第三方服务（API、翻译平台）产生的费用
+  · 其他任何因使用或无法使用本软件而引起的损失
+
+  THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND. IN NO EVENT
+  SHALL THE AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR
+  OTHER LIABILITY ARISING FROM THE USE OF THE SOFTWARE, INCLUDING BUT NOT
+  LIMITED TO:
+
+  · Game account bans or suspensions
+  · Loss of in-game currency, items, or funds
+  · Data loss or device damage
+  · Fees from third-party services (API, translation platforms)
+  · Any other direct or indirect damages
+
+================================================================================
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
-in the Software without restriction, including without limitation the rights
-to use, copy, modify, merge, publish, and distribute copies of the Software,
-and to permit persons to whom the Software is furnished to do so, subject to
-the following conditions:
+in the Software without restriction for non-commercial purposes, including
+without limitation the rights to use, copy, modify, merge, publish, and
+distribute copies of the Software, subject to the following conditions:
 
-1. The above copyright notice and this permission notice shall be included in
-   all copies or substantial portions of the Software.
+1. The above copyright notice, attribution, terms, and this permission notice
+   shall be included in all copies or substantial portions of the Software.
 
-2. NON-COMMERCIAL USE ONLY. The Software is provided free of charge. No one
-   may sell, charge a fee for, or otherwise commercially exploit the Software,
-   in whole or in part, including but not limited to:
-   - Selling copies of the Software or modified versions
-   - Charging for access to or use of the Software
-   - Bundling the Software as part of any paid product or service
-   - Using the Software to generate revenue without explicit written permission
-     from the copyright holder(s)
+2. The Software may NOT be used for any commercial purpose whatsoever, including
+   but not limited to selling, charging, or bundling as defined above.
+
+3. All modifications and derivative works must retain the original attribution
+   and this license.
 
 THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
 IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
@@ -29,21 +88,4 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 SOFTWARE.
-
----
-
-本软件为免费开源项目，特此授予任何获取本软件及相关文档文件（以下简称"软件"）副本的人员
-免费使用、复制、修改、合并、发布和分发本软件的权利，但须满足以下条件：
-
-1. 上述版权声明和本许可声明应包含在所有副本或实质部分中。
-
-2. 禁止商业使用。本软件免费提供，任何人不得出售、收费或以其他方式商业利用本软件
-   （包括整体或部分），包括但不限于：
-   - 出售本软件或其修改版本的副本
-   - 对软件的访问或使用收费
-   - 将本软件作为任何付费产品或服务的一部分捆绑销售
-   - 未经版权持有人明确书面许可，利用本软件获取收入
-
-本软件按"原样"提供，不提供任何形式的明示或暗示保证，包括但不限于适销性、
-特定用途适用性和非侵权性的保证。在任何情况下，作者或版权持有人均不对因使用
-本软件而产生的任何索赔、损害或其他责任负责。
+================================================================================
