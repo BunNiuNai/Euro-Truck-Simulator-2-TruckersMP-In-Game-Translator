@@ -809,17 +809,71 @@ class OverlayWindow:
         self.root.after(0, lambda: self._on_translate_done(chinese_text, english))
 
     def _on_translate_done(self, chinese: str, english: str):
-        """Translation finished — put result in the entry box for manual send."""
-        self._pending_chinese = chinese
-        self._pending_english = english
+        """Translation finished — start auto-send on background thread."""
+        self.send_entry.delete(0, tk.END)
+        self.send_hint.config(text=" 正在发送到游戏... ", fg="#dcdcaa")
+        import threading
+        threading.Thread(target=self._do_auto_send, args=(chinese, english), daemon=True).start()
+
+    def _do_auto_send(self, chinese: str, english: str):
+        """Background thread: validate → hide overlay → send → confirm → restore."""
+        from compose_sender import ComposeSender, SendResult
+
+        sender = ComposeSender(self.cfg)
+
+        # Step 1: Validate translation
+        if not sender.validate(chinese, english):
+            self.root.after(0, lambda: self._on_send_done(
+                SendResult.FAIL_TRANSLATION, chinese, english))
+            return
+
+        # Step 2: Hide overlay on main thread, wait for effect
+        hide_done = threading.Event()
+        self.root.after(0, lambda: (self.hide(), hide_done.set()))
+        if not hide_done.wait(timeout=1.0):
+            self.root.after(0, lambda: self._on_send_done(
+                SendResult.FAIL_SEND, chinese, english))
+            return
+        time.sleep(0.25)
+
+        # Step 3: Execute send + confirmation (blocks up to ~2.8s)
+        result = sender.execute_send(english)
+
+        # Step 4: Restore overlay on main thread
+        self.root.after(0, self.show)
+
+        # Step 5: Report result to UI
+        self.root.after(0, lambda: self._on_send_done(result, chinese, english))
+
+    def _on_send_done(self, result, chinese: str, english: str):
+        """Main-thread callback: display result status in UI."""
+        from compose_sender import SendResult
+
         self._sending = False
         self.send_entry.config(state=tk.NORMAL)
-        self.send_entry.delete(0, tk.END)
-        self.send_entry.insert(0, english)
-        self.send_entry.select_range(0, tk.END)
-        self.send_entry.icursor(tk.END)
-        self.send_hint.config(text=" 翻译完成 | 用热键手动发送 ", fg="#4ec9b0")
-        self._start_manual_send_poller()
+
+        if result == SendResult.OK_CONFIRMED:
+            self._insert_sent(chinese, english)
+            self.send_hint.config(text=" 已发送并确认 ✓ ", fg="#4ec9b0")
+        elif result == SendResult.OK_UNCONFIRMED:
+            self._insert_sent(chinese, english)
+            self.send_hint.config(text=" 已发送（未确认） ", fg="#dcdcaa")
+        elif result == SendResult.FAIL_TRANSLATION:
+            self.send_entry.insert(0, english)
+            self.send_entry.select_range(0, tk.END)
+            self.send_hint.config(text=" 翻译无效，未发送 ", fg="#f44747")
+        elif result == SendResult.FAIL_SEND:
+            self.send_entry.insert(0, english)
+            self.send_entry.select_range(0, tk.END)
+            self.send_hint.config(text=" 发送失败 ", fg="#f44747")
+        else:
+            self.send_hint.config(text=" 未知状态 ", fg="#888888")
+
+        # Auto-clear entry after 5 seconds
+        self.root.after(5000, lambda: (
+            self.send_entry.delete(0, tk.END),
+            self._update_hotkey_hint()
+        ))
 
     def _on_translate_error(self, error: str):
         self._sending = False
@@ -830,91 +884,6 @@ class OverlayWindow:
         log = get_logger()
         if log:
             log.error("LLM", f"发送翻译失败: {error}")
-
-    # ----- manual send hotkeys -----
-
-    def _parse_hotkey_vk(self, hotkey_str: str) -> tuple[int, int]:
-        """Parse hotkey string into (mods_mask, vk_code). Supports special keys."""
-        parts = hotkey_str.lower().strip().split("+")
-        mods = 0
-        for p in parts[:-1]:
-            p = p.strip()
-            if p in ("shift", "shft"): mods |= MOD_SHIFT
-            elif p in ("ctrl", "control"): mods |= MOD_CONTROL
-            elif p in ("alt"): mods |= MOD_ALT
-        key = parts[-1].strip()
-        if key in SPECIAL_VK:
-            vk = SPECIAL_VK[key]
-        elif len(key) == 1:
-            vk = ord(key.upper())
-        else:
-            vk = 0
-        return mods, vk
-
-    def _mod_vks(self, mods: int) -> list[int]:
-        """Convert MOD_* flags to VK codes for GetAsyncKeyState."""
-        return mod_vk(mods)
-
-    def _start_manual_send_poller(self):
-        """Background thread polls hotkeys: copy (detect only) and enter (mark sent)."""
-        if getattr(self, '_manual_poller_active', False):
-            return
-        self._manual_poller_active = True
-
-        import threading
-        from ctypes import windll
-
-        copy_mods, copy_vk = self._parse_hotkey_vk(self.cfg.copy_hotkey)
-        enter_mods, enter_vk = self._parse_hotkey_vk(self.cfg.enter_hotkey)
-
-        def held(vk_code): return windll.user32.GetAsyncKeyState(vk_code) & 0x8000
-
-        def check(mods, vk):
-            if vk == 0:
-                return False
-            mv = self._mod_vks(mods)
-            return all(held(mv) for mv in mv) and held(vk)
-
-        was_copy = check(copy_mods, copy_vk)
-        was_enter = check(enter_mods, enter_vk)
-
-        def poller():
-            nonlocal was_copy, was_enter
-            while getattr(self, '_manual_poller_active', False):
-                cd = check(copy_mods, copy_vk)
-                ed = check(enter_mods, enter_vk)
-
-                if cd and not was_copy:
-                    self.root.after(0, self._on_copy_hotkey)
-                if ed and not was_enter:
-                    self.root.after(0, self._on_enter_hotkey)
-
-                was_copy, was_enter = cd, ed
-                threading.Event().wait(0.05)
-
-        t = threading.Thread(target=poller, daemon=True)
-        t.start()
-
-    def _stop_manual_send_poller(self):
-        self._manual_poller_active = False
-
-    def _on_copy_hotkey(self):
-        """Detected user pressed copy hotkey — system already copied the text."""
-        if not self._pending_english:
-            return
-        self.send_hint.config(text=" 已复制到剪贴板 ", fg="#4ec9b0")
-        self.root.after(1500, lambda: self.send_hint.config(
-            text=" 翻译完成 | 用热键手动发送 ", fg="#4ec9b0"))
-
-    def _on_enter_hotkey(self):
-        """Detected user pressed enter hotkey — message was sent."""
-        self._stop_manual_send_poller()
-        self._insert_sent(self._pending_chinese, self._pending_english)
-        self.send_hint.config(text=" 已发送 ", fg="#4ec9b0")
-        self.root.after(2000, lambda: (
-            self.send_entry.delete(0, tk.END),
-            self._update_hotkey_hint()
-        ))
 
     # ----- countdown frame (kept for layout, hidden by default) -----
     def _show_countdown(self):

@@ -35,6 +35,7 @@ def build():
         "--hidden-import", "win32_constants",
         "--hidden-import", "message_display",
         "--hidden-import", "hotkey_manager",
+        "--hidden-import", "compose_sender",
         "--clean",
         MAIN,
     ]
