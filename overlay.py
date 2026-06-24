@@ -244,7 +244,6 @@ class OverlayWindow:
         self.ctx_menu = tk.Menu(self.root, tearoff=0, bg="#222222", fg=FG)
         self.ctx_menu.add_command(label="Settings / 设置", command=self._on_settings)
         self.ctx_menu.add_command(label="Switch Mode / 切换模式", command=self._toggle_mode)
-        self.ctx_menu.add_command(label="Check Updates / 检查更新", command=self._on_check_update)
         self.ctx_menu.add_separator()
         self.ctx_menu.add_command(label="Hide / 隐藏", command=self.hide)
         self.ctx_menu.add_command(label="Exit / 退出", command=self._on_exit)
@@ -254,7 +253,6 @@ class OverlayWindow:
         self._settings_cb = None
         self._switch_mode_cb = None
         self._exit_cb = None
-        self._check_update_cb = None
 
     def _restore_or_center(self):
         """Restore saved window position or center on screen."""
@@ -388,10 +386,6 @@ class OverlayWindow:
         if self._exit_cb:
             self._exit_cb()
 
-    def _on_check_update(self):
-        if self._check_update_cb:
-            self._check_update_cb()
-
     # ----- mouse handling for borderless resize & drag (overlay mode) -----
     BORDER = 8
     MIN_W, MIN_H = 280, 250
@@ -475,20 +469,6 @@ class OverlayWindow:
             self._schedule_save_position()
 
     # ----- message handling -----
-    def _update_last_sys_msg(self, new_translated: str):
-        """Update the translated text of the last message — used for download progress."""
-        if self._messages:
-            last = self._messages[-1]
-            self._messages[-1] = (last[0], last[1], new_translated, last[3])
-        # Force redraw
-        self._displayed_count = 0
-        self.text.configure(state=tk.NORMAL)
-        self.text.delete("1.0", tk.END)
-        if self._is_overlay:
-            self.text.insert(tk.END, " ◢", self._grip_tag)
-        self.text.configure(state=tk.DISABLED)
-        self._sync_display()
-
     def get_recent_messages(self):
         """Return recent messages for the message log (settings tab)."""
         return list(self._messages)

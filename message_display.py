@@ -98,7 +98,6 @@ class MessageDisplay:
         self.ctx_menu = tk.Menu(self.text, tearoff=0, bg="#222222", fg=FG)
         self.ctx_menu.add_command(label="Settings / 设置")
         self.ctx_menu.add_command(label="Switch Mode / 切换模式")
-        self.ctx_menu.add_command(label="Check Updates / 检查更新")
         self.ctx_menu.add_separator()
         self.ctx_menu.add_command(label="Hide / 隐藏")
         self.ctx_menu.add_command(label="Exit / 退出")
@@ -107,7 +106,6 @@ class MessageDisplay:
         self,
         settings_cb: callable | None = None,
         switch_mode_cb: callable | None = None,
-        check_update_cb: callable | None = None,
         hide_cb: callable | None = None,
         exit_cb: callable | None = None,
     ) -> None:
@@ -115,9 +113,8 @@ class MessageDisplay:
         menu = self.ctx_menu
         menu.entryconfigure(0, command=settings_cb)
         menu.entryconfigure(1, command=switch_mode_cb)
-        menu.entryconfigure(2, command=check_update_cb)
-        menu.entryconfigure(4, command=hide_cb)
-        menu.entryconfigure(5, command=exit_cb)
+        menu.entryconfigure(3, command=hide_cb)
+        menu.entryconfigure(4, command=exit_cb)
 
     # ── Message list management ──
 
@@ -140,19 +137,6 @@ class MessageDisplay:
         if not self._sync_scheduled:
             self._sync_scheduled = True
             self.text.after_idle(self._do_sync_and_clear)
-
-    def update_last_sys_msg(self, new_translated: str) -> None:
-        """Update the translated text of the last message."""
-        if self._messages:
-            last = self._messages[-1]
-            self._messages[-1] = (last[0], last[1], new_translated, last[3])
-        self._displayed_count = 0
-        self.text.configure(state=tk.NORMAL)
-        self.text.delete("1.0", tk.END)
-        if self._is_overlay:
-            self.text.insert(tk.END, " /", self._grip_tag)
-        self.text.configure(state=tk.DISABLED)
-        self._sync_display()
 
     # ── Rendering ──
 

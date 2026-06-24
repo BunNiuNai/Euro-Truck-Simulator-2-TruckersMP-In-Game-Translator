@@ -1,7 +1,7 @@
 # 🚛 ETS2 TruckersMP Chat Translator · 欧卡联机聊天翻译器
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-v1.3.0-3b82f6?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-v1.5.1-3b82f6?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-10b981?style=for-the-badge" alt="License">
   <img src="https://img.shields.io/badge/platform-Windows%2010%2F11-0078D6?style=for-the-badge&logo=windows" alt="Platform">
   <img src="https://img.shields.io/badge/python-3.10%2B-3776AB?style=for-the-badge&logo=python" alt="Python">
@@ -101,8 +101,8 @@
 
 | 🏷️ | 功能 | 说明 |
 |:---:|---|---|
-| 🔄 | **一键自动更新** | 启动检查 GitHub 新版本 + 国内镜像下载支持 |
-| 🌏 | **GitHub 镜像下载** | 国内用户自动走 ghproxy.com 代理，无障碍更新 |
+
+
 | 🔥 | **配置热重载** | 修改配置文件 3 秒自动生效，无需重启 |
 | 💬 | **游戏术语库** | 内置 130+ 行 ETS2 专用术语 + 100+ 条网游俚语 |
 | ✂️ | **消息分割线** | 每条翻译消息下方分隔线，快速区分 |
@@ -321,7 +321,7 @@ python build_exe.py
 ├── ⌨️ hotkey_manager.py     # 系统热键管理（RegisterHotKey + 消息窗口）
 ├── 📨 input_sender.py      # 键盘模拟（SendInput API、剪贴板）
 ├── 📋 tray_icon.py         # 系统托盘（纯 ctypes + Win32 API）
-├── 🔄 update.py            # 自动更新（GitHub 版本检查 + 镜像下载）
+
 ├── 🏗️ build_exe.py          # PyInstaller 打包脚本
 ├── 📊 win32_constants.py   # Win32 常量/结构体共享模块
 ├── 💬 message_display.py   # 消息渲染引擎
@@ -403,11 +403,6 @@ python build_exe.py
 > 访问 [fanyi-api.baidu.com](https://fanyi-api.baidu.com/) 注册开发者 → 创建应用 → 获取 APP ID 和密钥 → 选择"标准版"免费使用。
 </details>
 
-<details>
-<summary>🟢 <b>国内用户如何下载更新？</b></summary>
-
-> v1.2.3 起内置 GitHub 镜像下载支持，自动通过 ghproxy.com 代理，国内直连无障碍。
-</details>
 
 ---
 

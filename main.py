@@ -6,6 +6,7 @@ import ctypes
 import sys
 import threading
 import tkinter as tk
+import webbrowser
 from queue import Queue
 from tkinter import ttk
 
@@ -36,7 +37,6 @@ def _ensure_single_instance():
 from translator import Translator, test_connection, test_baidu_connection
 from config import VERSION
 from logger import init_logger, get_logger
-import update as updater
 
 class App:
     def __init__(self):
@@ -69,7 +69,7 @@ class App:
         self.overlay._settings_cb = self._open_settings
         self.overlay._switch_mode_cb = self._switch_mode
         self.overlay._exit_cb = self._shutdown
-        self.overlay._check_update_cb = lambda: self._check_for_update(auto_download=True)
+
 
         # Tray icon
         self.tray = None
@@ -82,11 +82,19 @@ class App:
         # Show startup status
         self.overlay.root.after(300, self._startup_status)
 
-        # Check for updates (background)
-        self.overlay.root.after(1500, self._check_for_update)
-
         # Persist auto-detected player name
         self.overlay.root.after(500, self._check_self_name)
+
+        # Schedule periodic log cleanup (every 6 hours)
+        self._schedule_log_cleanup()
+
+    def _schedule_log_cleanup(self):
+        """Run log cleanup every 6 hours (21600000 ms)."""
+        log = get_logger()
+        if log:
+            log._cleanup_old_logs()
+        # Re-schedule
+        self.overlay.root.after(21600000, self._schedule_log_cleanup)
 
     def _check_self_name(self):
         """Periodically check if player name was auto-detected, persist it."""
@@ -196,96 +204,6 @@ class App:
         log = get_logger()
         if log:
             log.info("SYS", "翻译器关闭")
-        self.overlay._save_position()
-        save_config(self.cfg)
-        if self.tray:
-            self.tray.stop()
-            self.tray = None
-        self.monitor.stop()
-        self.translator.stop()
-        import time
-        time.sleep(0.2)
-        self.overlay.root.destroy()
-
-    def _check_for_update(self, auto_download=False):
-        """Check GitHub for new releases in background thread.
-        If auto_download=True and update found, start download immediately."""
-        self.overlay.add_message(
-            "System", "正在检查更新...", f"当前版本: {VERSION}", is_self=True
-        )
-
-        def _do_check():
-            has_update, latest, url = updater.check_for_update()
-            if has_update:
-                if auto_download:
-                    self.overlay.root.after(0, lambda: self._start_update(url, latest))
-                else:
-                    self.overlay.root.after(0, lambda: self.overlay.add_message(
-                        "System",
-                        f"发现新版本 {latest}！",
-                        f"当前 {VERSION} → 最新 {latest}\n右键菜单 → 检查更新 即可自动下载更新",
-                        is_self=True
-                    ))
-            elif latest:
-                self.overlay.root.after(0, lambda: self.overlay.add_message(
-                    "System", f"已是最新版本 {latest}", f"当前版本: {VERSION}", is_self=True
-                ))
-            else:
-                self.overlay.root.after(0, lambda: self.overlay.add_message(
-                    "System", "更新检查失败", "无法连接到 GitHub，请检查网络", is_self=True
-                ))
-
-        threading.Thread(target=_do_check, daemon=True).start()
-
-    def _start_update(self, url=None, latest=None):
-        """Download and apply update, with progress shown in overlay."""
-        if not url:
-            has_update, latest, url = updater.check_for_update()
-            if not has_update:
-                self.overlay.add_message(
-                    "System", f"已是最新版本 {latest}", "无需更新", is_self=True
-                )
-                return
-
-        self.overlay.add_message(
-            "System", f"开始下载 {latest or ''} ...", "下载中 0%", is_self=True
-        )
-
-        def on_progress(pct):
-            if pct < 0:
-                self.overlay.root.after(0, lambda: self.overlay.add_message(
-                    "System", "下载失败", "请检查网络后重试", is_self=True
-                ))
-            else:
-                self.overlay.root.after(0, lambda p=pct: self.overlay._update_last_sys_msg(
-                    f"下载中 {p}%"
-                ))
-
-        def _do_download():
-            new_exe = updater.download_update(url, on_progress)
-            if new_exe:
-                self.overlay.root.after(0, lambda: self.overlay.add_message(
-                    "System", "下载完成，正在更新...",
-                    "应用将在更新后自动重启", is_self=True
-                ))
-                self.overlay.root.after(500, lambda: self._apply_update(new_exe))
-
-        threading.Thread(target=_do_download, daemon=True).start()
-
-    def _apply_update(self, new_exe_path: str):
-        """Replace current exe and restart."""
-        own_path = sys.executable if getattr(sys, 'frozen', False) else sys.argv[0]
-        if not own_path.lower().endswith('.exe'):
-            self.overlay.add_message(
-                "System", "开发模式无法自动更新",
-                "请手动从 GitHub Releases 下载新版本", is_self=True
-            )
-            return
-        updater.apply_update(new_exe_path, own_path)
-        self._shutdown()
-        if self._shutting_down:
-            return
-        self._shutting_down = True
         self.overlay._save_position()
         save_config(self.cfg)
         if self.tray:
@@ -597,6 +515,48 @@ class SettingsDialog:
         self._pill_btn(btn_row, "Save / 保存", self._save, accent=True).pack(
             side=tk.RIGHT, padx=4)
 
+        # ---- credits (always visible, below buttons) ----
+        credits = tk.Frame(outer, bg=page_bg)
+        credits.grid(row=3, column=0, sticky="ew", padx=4, pady=(4, 8))
+
+        # helper to make clickable links
+        def _link(parent, text, url):
+            lbl = tk.Label(parent, text=text, bg=page_bg, fg="#6a9955",
+                           font=("Microsoft YaHei", 9), cursor="hand2", anchor=tk.W)
+            lbl.bind("<Button-1>", lambda e: webbrowser.open(url))
+            lbl.bind("<Enter>", lambda e: lbl.configure(fg="#4ec9b0"))
+            lbl.bind("<Leave>", lambda e: lbl.configure(fg="#6a9955"))
+            return lbl
+
+        gh_link = _link(credits,
+            "GitHub: https://github.com/BunNiuNai/Euro-Truck-Simulator-2-TruckersMP-In-Game-Translator",
+            "https://github.com/BunNiuNai/Euro-Truck-Simulator-2-TruckersMP-In-Game-Translator")
+        gh_link.pack(anchor=tk.W, pady=(0, 2))
+
+        kook_row = tk.Frame(credits, bg=page_bg)
+        kook_row.pack(fill=tk.X, pady=(0, 2))
+        _link(kook_row, "Kook: https://kook.vip/WJZ5Sj",
+              "https://kook.vip/WJZ5Sj").pack(side=tk.LEFT)
+        tk.Label(kook_row, text="（链接不跳转请搜索频道：39037626）",
+                 bg=page_bg, fg=self._TEXT_SEC,
+                 font=("Microsoft YaHei", 9)).pack(side=tk.LEFT, padx=(4, 0))
+
+        tk.Label(credits, text="特别鸣谢：阿呆喵  川子  小mini",
+                 bg=page_bg, fg=self._TEXT_SEC,
+                 font=("Microsoft YaHei", 9)).pack(anchor=tk.W, pady=(0, 1))
+
+        tk.Label(credits, text="作者：BinNiuNai  阿呆喵  川子  小mini",
+                 bg=page_bg, fg=self._TEXT_SEC,
+                 font=("Microsoft YaHei", 9)).pack(anchor=tk.W, pady=(0, 1))
+
+        tk.Label(credits, text='"如果游戏的快乐都要被明码标价，那我们会站出来"  -- 小mini',
+                 bg=page_bg, fg="#569cd6",
+                 font=("Microsoft YaHei", 8, "italic")).pack(anchor=tk.W, pady=(0, 4))
+
+        tk.Label(credits, text="翻译器更新与使用反馈可在 Kook 频道留言，如需新功能欢迎提出",
+                 bg=page_bg, fg=self._TEXT_SEC,
+                 font=("Microsoft YaHei", 9)).pack(anchor=tk.W)
+
         # ---- activate first tab ----
         self._active_tab = None
         self._switch_tab("api")
@@ -870,6 +830,7 @@ class SettingsDialog:
 
         self._pill_btn(btn_row, "📂 打开日志文件夹", self._open_log_dir, accent=False).pack(side=tk.LEFT)
         self._pill_btn(btn_row, "🔄 刷新", self._refresh_logs, accent=False).pack(side=tk.LEFT, padx=(8, 0))
+        self._pill_btn(btn_row, "🗑 删除日志", self._delete_translator_logs, accent=False).pack(side=tk.RIGHT)
 
     def _build_messages_tab(self):
         """Build the message log tab — shows recent translated chat messages."""
@@ -902,6 +863,7 @@ class SettingsDialog:
         btn_row.grid(row=1, column=0, columnspan=2, sticky="ew", pady=(8, 4), padx=8)
         self._pill_btn(btn_row, "🔄 刷新", self._refresh_messages, accent=False).pack(side=tk.LEFT)
         self._pill_btn(btn_row, "📂 打开日志文件夹", self._open_log_dir, accent=False).pack(side=tk.LEFT, padx=(8, 0))
+        self._pill_btn(btn_row, "🗑 删除日志", self._delete_message_logs, accent=False).pack(side=tk.RIGHT)
 
     def _refresh_messages(self):
         """Reload message log from the overlay window."""
@@ -978,6 +940,22 @@ class SettingsDialog:
             log_dir = log.get_log_dir()
             if os.path.isdir(log_dir):
                 os.startfile(log_dir)
+
+    def _delete_translator_logs(self) -> None:
+        """Delete all log files and refresh translator logs tab."""
+        log = get_logger()
+        if log:
+            n = log.delete_all_logs()
+            self._refresh_logs()
+            log.info("SYS", f"手动删除 {n} 个日志文件")
+
+    def _delete_message_logs(self) -> None:
+        """Delete all log files and refresh message logs tab."""
+        log = get_logger()
+        if log:
+            n = log.delete_all_logs()
+            self._refresh_messages()
+            log.info("SYS", f"手动删除 {n} 个日志文件")
 
     def _on_log_mousewheel(self, event) -> None:
         self.log_text.yview_scroll(int(-1 * (event.delta / 120)), "units")

@@ -62,6 +62,22 @@ class Logger:
         except OSError:
             pass
 
+    def delete_all_logs(self) -> int:
+        """Delete all log files in the log directory. Returns count of deleted files."""
+        deleted = 0
+        try:
+            for f in os.listdir(self._log_dir):
+                if (f.startswith("translator_") or f.startswith("messages_")) and f.endswith(".log"):
+                    fpath = os.path.join(self._log_dir, f)
+                    try:
+                        os.remove(fpath)
+                        deleted += 1
+                    except OSError:
+                        pass
+        except OSError:
+            pass
+        return deleted
+
     def _rotate_if_needed(self) -> None:
         """If current log exceeds max_size, rename it with a sequence number."""
         path = self._current_log_path()
