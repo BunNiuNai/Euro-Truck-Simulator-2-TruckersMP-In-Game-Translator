@@ -1,7 +1,7 @@
 # 🚛 ETS2 TruckersMP Chat Translator · 欧卡联机聊天翻译器
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-v1.5.1-3b82f6?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-v1.5.2-3b82f6?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-10b981?style=for-the-badge" alt="License">
   <img src="https://img.shields.io/badge/platform-Windows%2010%2F11-0078D6?style=for-the-badge&logo=windows" alt="Platform">
   <img src="https://img.shields.io/badge/python-3.10%2B-3776AB?style=for-the-badge&logo=python" alt="Python">
@@ -14,7 +14,7 @@
 </p>
 
 <p align="center">
-  <strong>🌍 实时多语言聊天翻译 · 悬浮窗口 · 一键发送 · 零依赖</strong><br>
+  <strong>🌍 实时多语言聊天翻译 · 悬浮窗口 · 一键发送 · exe 免安装</strong><br>
   <sub>Real-time in-game chat translator for Euro Truck Simulator 2 / TruckersMP</sub>
 </p>
 
@@ -38,7 +38,7 @@
 ## 📖 目录
 
 - [✨ 功能特性](#-features--功能特性)
-- [🆕 v1.3.0 更新亮点](#-v130-更新亮点)
+- [🆕 近期更新](#-近期更新)
 - [🧠 推荐大模型](#-recommended-llm--推荐大模型)
 - [🖥 系统要求](#-system-requirements--系统要求)
 - [🚀 快速开始](#-quick-start--快速开始)
@@ -101,8 +101,6 @@
 
 | 🏷️ | 功能 | 说明 |
 |:---:|---|---|
-
-
 | 🔥 | **配置热重载** | 修改配置文件 3 秒自动生效，无需重启 |
 | 💬 | **游戏术语库** | 内置 130+ 行 ETS2 专用术语 + 100+ 条网游俚语 |
 | ✂️ | **消息分割线** | 每条翻译消息下方分隔线，快速区分 |
@@ -111,44 +109,32 @@
 
 ---
 
-## 🆕 v1.3.0 更新亮点
+## 🆕 近期更新
 
 <details open>
-<summary><b>点击展开完整更新日志</b></summary>
+<summary><b>v1.5.x · v1.4.0 · v1.3.0 — 点击展开</b></summary>
 
-### 🌐 多 LLM Provider 并行回退
+### 🚀 v1.5.2 — 窗口渲染修复
+- 标准窗口模式 **拖影问题修复**，不再走 Windows layered window
+- exe 文件名含版本号，方便识别
+
+### 📤 v1.5.1 / v1.5.0 — 自动发送 + 日志管理
+- **中文输入 → 自动翻译 → 自动发送到游戏**，全流程自动化
+- 翻译器日志 + 消息日志分拆管理，支持文件夹打开/删除/刷新
+- 设置页面新增**鸣谢栏**（作者 & 贡献者）
+
+### 🛡️ v1.4.0 — 21 项稳定性修复
+- 线程安全、DPAPI 加密、崩溃恢复、内存泄漏、竞态条件全面修复
+- 启动时跳过历史消息，仅增量读取新消息
+
+### 🌐 v1.3.0 — 多 Provider 并行竞速
 - 配置多个大模型 API，翻译时**并行竞速**，最快的结果立即返回
 - Provider 连续失败 3 次自动**熔断冷却**，成功后自动恢复
 - **同文本并发请求自动合并**，节省 API 费用
-- 设置界面支持 Provider 增删改排序
-
-### ⚡ 翻译加速
-- 批量等待窗口 0.8s → **0.3s**
-- HTTP 超时 30s → **8s**
-- LRU 缓存 200 条 → **1000 条**
-- Provider 策略从单路串行升级为**多路并行竞速**
-
-### 🔄 配置热重载
-- 修改配置文件后 3 秒自动检测并重载翻译引擎，无需重启程序
-
-### ⌨️ 系统热键改进
-- 从轮询升级为 **RegisterHotKey 系统级热键**
-- 多策略焦点激活（AllowSetForegroundWindow + 模拟 Alt 键 + SetActiveWindow）
-
-### 🎨 界面优化
-- VS Code 深灰主题配色 + 语言下拉框可读名称 + 输入框随窗口拉伸
-
-### 🪟 窗口增强
-- 翻译器窗口圆角 + 底部状态栏北京时间时钟
-
-### 📋 日志分拆
-- 翻译器日志 + 消息日志两个独立标签页
-
-### 🔤 系统消息翻译
-- TMP 系统通知现在也会被翻译
-
-### 🐛 Bug 修复
-- 修复设置界面多个交互问题 + 消息请求合并死锁 + 输入框拉伸失效
+- 配置热重载：修改配置文件 3 秒自动生效
+- 热键升级为 **RegisterHotKey 系统级热键**
+- 批量等待 0.8s → **0.3s**，HTTP 超时 30s → **8s**，缓存 200 → **1000 条**
+- TMP 系统消息翻译 + VS Code 深灰主题 + 窗口圆角 + 北京时间
 
 </details>
 
@@ -186,7 +172,7 @@
 
 ### 方式一：📦 下载 exe 直接运行（推荐）
 
-从 [📥 GitHub Releases](https://github.com/BunNiuNai/Euro-Truck-Simulator-2-TruckersMP-In-Game-Translator/releases) 下载最新 `ETS2-TruckersMP翻译器.exe`，双击运行即可。
+从 [📥 GitHub Releases](https://github.com/BunNiuNai/Euro-Truck-Simulator-2-TruckersMP-In-Game-Translator/releases) 下载最新 `ETS2-TruckersMP翻译器-v1.5.2.exe`，双击运行即可。
 
 > ✅ 无需安装 Python · 无需配置环境 · 开箱即用
 
@@ -208,7 +194,7 @@ python main.py
 
 ```bash
 python build_exe.py
-# 输出 → dist/ETS2-TruckersMP翻译器.exe
+# 输出 → dist/ETS2-TruckersMP翻译器-v1.5.2.exe
 ```
 
 ---
@@ -330,7 +316,7 @@ python build_exe.py
 ├── 📄 requirements.txt     # Python 依赖（仅 httpx）
 ├── 🎨 icon.ico             # 程序图标
 └── 📦 dist/                # 构建输出
-    └── ETS2-TruckersMP翻译器.exe
+    └── ETS2-TruckersMP翻译器-v1.5.2.exe
 ```
 
 ---
@@ -414,8 +400,4 @@ python build_exe.py
 
 <p align="center">
   本项目基于 <a href="LICENSE">MIT License</a> 开源 · 完全免费 · 可自由使用、修改和分发
-</p>
-
-<p align="center">
-  
 </p>
