@@ -10,7 +10,12 @@ import sys
 
 PROJECT_DIR = os.path.dirname(os.path.abspath(__file__))
 MAIN = os.path.join(PROJECT_DIR, "main.py")
-NAME = "ETS2-TruckersMP翻译器"
+# Read version from config.py
+import re
+_config_path = os.path.join(PROJECT_DIR, "config.py")
+_version_match = re.search(r'VERSION\s*=\s*"(v[\d.]+)"', open(_config_path, encoding="utf-8").read())
+VERSION = _version_match.group(1) if _version_match else "v0.0.0"
+NAME = f"ETS2-TruckersMP翻译器-{VERSION}"
 ICON = os.path.join(PROJECT_DIR, "icon.ico")
 ICON_SRC = os.path.join(PROJECT_DIR, "xintubiao.png")
 
