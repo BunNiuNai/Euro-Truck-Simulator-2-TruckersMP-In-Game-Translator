@@ -330,7 +330,10 @@ class OverlayWindow:
     def _apply_mode(self):
         """Apply window mode settings without resetting window size."""
         self.root.attributes("-topmost", True)
-        self.root.attributes("-alpha", self.cfg.window_opacity)
+        if self.cfg.window_mode == "overlay":
+            self.root.attributes("-alpha", self.cfg.window_opacity)
+        else:
+            self.root.attributes("-alpha", 1.0)  # standalone: fully opaque to avoid layered-window ghosting
 
         was_visible = self.root.state() != "withdrawn"
         if was_visible:
@@ -353,6 +356,8 @@ class OverlayWindow:
             self.root.overrideredirect(False)
             self.root.update_idletasks()  # ensure new hwnd after overrideredirect
             self.title_bar.pack_forget()
+            # Clear any residual SetWindowRgn from overlay mode to avoid clipping artifacts
+            ctypes.windll.user32.SetWindowRgn(self.root.winfo_id(), 0, True)
             ex = ctypes.windll.user32.GetWindowLongPtrW(self.root.winfo_id(), GWL_EXSTYLE)
             ctypes.windll.user32.SetWindowLongPtrW(self.root.winfo_id(), GWL_EXSTYLE, ex & ~WS_EX_TOOLWINDOW & ~WS_EX_TRANSPARENT)
 
