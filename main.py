@@ -616,10 +616,10 @@ class SettingsDialog:
         self.backend_combo.bind("<<ComboboxSelected>>", self._on_backend_changed)
         r = self._row(card_meta, r, "Backend / 翻译后端", self.backend_combo)
 
-        self._lang_map = {
-            "简体中文": "zh-CN", "English": "en", "日本語": "ja", "한국어": "ko",
-            "Français": "fr", "Deutsch": "de", "Español": "es",
-            "Русский": "ru", "Português": "pt", "Italiano": "it",
+        self._lang_map: dict[str, str] = {
+            "简体中文": "zh-CN", "英语": "en", "日语": "ja", "韩语": "ko",
+            "法语": "fr", "德语": "de", "西班牙语": "es",
+            "俄语": "ru", "葡萄牙语": "pt", "意大利语": "it",
         }
         self._lang_rev = {v: k for k, v in self._lang_map.items()}
         self.lang_var = tk.StringVar(value=self._lang_rev.get(self.cfg.target_language, "简体中文"))
