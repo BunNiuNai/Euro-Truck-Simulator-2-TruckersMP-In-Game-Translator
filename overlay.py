@@ -783,10 +783,10 @@ class OverlayWindow:
         return "break"
 
     def _do_translate(self, chinese_text: str):
-        from translator import translate_to_english
+        from translator import translate_for_send
 
         try:
-            english = translate_to_english(self.cfg, chinese_text)
+            english = translate_for_send(self.cfg, chinese_text, self.cfg.send_target_language)
         except Exception as e:
             self.root.after(0, lambda: self._on_translate_error(str(e)))
             return

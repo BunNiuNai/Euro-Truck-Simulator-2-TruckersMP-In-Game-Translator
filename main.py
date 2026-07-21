@@ -629,6 +629,13 @@ class SettingsDialog:
             state="readonly", width=18, font=("Microsoft YaHei", 10))
         r = self._row(card_meta, r, "Target Language / 目标语言", self.lang_combo)
 
+        self.send_lang_var = tk.StringVar(value=self._lang_rev.get(self.cfg.send_target_language, "英语"))
+        self.send_lang_combo = ttk.Combobox(
+            card_meta, textvariable=self.send_lang_var,
+            values=list(self._lang_map.keys()),
+            state="readonly", width=18, font=("Microsoft YaHei", 10))
+        r = self._row(card_meta, r, "Send Language / 发送目标语言", self.send_lang_combo)
+
         # Baidu sub-card (rounded)
         self._section_label(inner, "BAIDU TRANSLATE  /  百度翻译").pack(fill=tk.X, pady=(8, 8))
         self.baidu_group = self._card(inner)
@@ -1145,6 +1152,7 @@ class SettingsDialog:
 
     def _load_values(self):
         self.lang_var.set(self._lang_rev.get(self.cfg.target_language, "简体中文"))
+        self.send_lang_var.set(self._lang_rev.get(self.cfg.send_target_language, "英语"))
         self.baidu_appid_entry.insert(0, self.cfg.baidu_appid)
         self.baidu_secret_entry.insert(0, self.cfg.baidu_secret)
         self.name_entry.insert(0, self.cfg.player_name)
@@ -1176,6 +1184,7 @@ class SettingsDialog:
             click_through=self.click_var.get(),
             translation_backend=self.backend_var.get(),
             target_language=self._lang_map.get(self.lang_var.get(), "zh-CN"),
+            send_target_language=self._lang_map.get(self.send_lang_var.get(), "en"),
             baidu_appid=self.baidu_appid_entry.get().strip(),
             baidu_secret=self.baidu_secret_entry.get().strip(),
         )

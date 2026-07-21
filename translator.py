@@ -595,12 +595,32 @@ def test_connection(endpoint: str, api_key: str, model: str) -> tuple:
 
 SEND_SYSTEM_PROMPT = get_send_prompt()
 
+# Language display name mapping (Chinese names)
+_LANG_DISPLAY_NAMES: dict[str, str] = {
+    "zh-CN": "简体中文", "en": "英语", "ja": "日语", "ko": "韩语",
+    "fr": "法语", "de": "德语", "es": "西班牙语",
+    "ru": "俄语", "pt": "葡萄牙语", "it": "意大利语",
+}
 
-def translate_to_english(cfg: AppConfig, text: str) -> str:
-    """Translate Chinese text to English for sending in chat.
+
+def _lang_code_to_baidu(lang_code: str) -> str:
+    """Map internal lang codes to Baidu Translate API lang codes."""
+    _baidu_map = {
+        "zh-CN": "zh", "en": "en", "ja": "jp", "ko": "kor",
+        "fr": "fra", "de": "de", "es": "spa",
+        "ru": "ru", "pt": "pt", "it": "it",
+    }
+    return _baidu_map.get(lang_code, "en")
+
+
+def translate_for_send(cfg: AppConfig, text: str, target_lang: str = "en") -> str:
+    """Translate Chinese text to the target language for sending in chat.
     Returns the translated text, or raises an exception on error."""
+    target_name = _LANG_DISPLAY_NAMES.get(target_lang, "英语")
+
     if cfg.translation_backend == "baidu":
-        return translate_to_english_via_baidu(cfg.baidu_appid, cfg.baidu_secret, text)
+        baidu_to = _lang_code_to_baidu(target_lang)
+        return translate_via_baidu(cfg.baidu_appid, cfg.baidu_secret, text, to_lang=baidu_to)
 
     # Use multi-provider if available
     providers = [p for p in cfg.llm_providers if p.get("enabled", True)]
@@ -614,7 +634,7 @@ def translate_to_english(cfg: AppConfig, text: str) -> str:
                 payload = {
                     "model": p["model"],
                     "messages": [
-                        {"role": "system", "content": SEND_SYSTEM_PROMPT},
+                        {"role": "system", "content": SEND_SYSTEM_PROMPT.replace("{target_language}", target_name)},
                         {"role": "user", "content": text},
                     ],
                     "temperature": 0.3,
@@ -636,7 +656,8 @@ def translate_to_english(cfg: AppConfig, text: str) -> str:
                     # Hybrid: Baidu verify
                     if cfg.translation_backend == "llm+baidu" and cfg.baidu_appid and cfg.baidu_secret:
                         try:
-                            baidu_result = translate_to_english_via_baidu(cfg.baidu_appid, cfg.baidu_secret, text)
+                            baidu_to = _lang_code_to_baidu(target_lang)
+                            baidu_result = translate_via_baidu(cfg.baidu_appid, cfg.baidu_secret, text, to_lang=baidu_to)
                             if _translations_differ(llm_result, baidu_result):
                                 return baidu_result
                         except Exception:
@@ -654,7 +675,7 @@ def translate_to_english(cfg: AppConfig, text: str) -> str:
     payload = {
         "model": cfg.api_model,
         "messages": [
-            {"role": "system", "content": SEND_SYSTEM_PROMPT},
+            {"role": "system", "content": SEND_SYSTEM_PROMPT.replace("{target_language}", target_name)},
             {"role": "user", "content": text},
         ],
         "temperature": 0.3,
@@ -672,7 +693,8 @@ def translate_to_english(cfg: AppConfig, text: str) -> str:
     # Hybrid mode: Baidu verifies and overrides if different
     if cfg.translation_backend == "llm+baidu" and cfg.baidu_appid and cfg.baidu_secret:
         try:
-            baidu_result = translate_to_english_via_baidu(cfg.baidu_appid, cfg.baidu_secret, text)
+            baidu_to = _lang_code_to_baidu(target_lang)
+            baidu_result = translate_via_baidu(cfg.baidu_appid, cfg.baidu_secret, text, to_lang=baidu_to)
             if _translations_differ(llm_result, baidu_result):
                 return baidu_result
         except Exception:

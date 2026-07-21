@@ -201,6 +201,7 @@ class AppConfig:
     api_key: str = ""
     api_model: str = ""
     target_language: str = "zh-CN"
+    send_target_language: str = "en"  # target language for sending translation
     system_prompt: str = DEFAULT_SYSTEM_PROMPT
     window_opacity: float = 0.80
     font_size: int = 12
