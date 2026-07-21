@@ -601,6 +601,24 @@ class SettingsDialog:
         add_row.pack(fill=tk.X, pady=(4, 12))
         self._pill_btn(add_row, "+ 添加 Provider", self._add_provider, accent=False).pack(side=tk.LEFT)
 
+        # Provider mode selection
+        self._section_label(inner, "PROVIDER MODE  /  调用模式").pack(fill=tk.X, pady=(8, 8))
+        mode_card = self._card(inner, padx=16, pady=12)
+        mode_card.pack(fill=tk.X, pady=(0, 4))
+
+        self.provider_mode_var = tk.StringVar(value=self.cfg.provider_mode)
+        mode_frame = tk.Frame(mode_card, bg=self._CARD_BG)
+        for val, lbl in [("race", "Race / 竞速（并行，谁快用谁）"),
+                         ("sequential", "Sequential / 顺序（逐个尝试，超时回退）")]:
+            rb = tk.Radiobutton(mode_frame, text=lbl, variable=self.provider_mode_var, value=val,
+                                bg=self._CARD_BG, fg=self._TEXT,
+                                font=("Microsoft YaHei", 10),
+                                selectcolor=self._CARD_BG,
+                                activebackground=self._CARD_BG,
+                                activeforeground=self._ACCENT)
+            rb.pack(anchor=tk.W, pady=2)
+        mode_frame.pack(fill=tk.X, padx=16, pady=8)
+
         # Backend + target language (compact row card)
         self._section_label(inner, "BACKEND & LANGUAGE  /  后端与语言").pack(fill=tk.X, pady=(8, 8))
         card_meta = self._card(inner, padx=16, pady=12)
@@ -1185,6 +1203,7 @@ class SettingsDialog:
             translation_backend=self.backend_var.get(),
             target_language=self._lang_map.get(self.lang_var.get(), "zh-CN"),
             send_target_language=self._lang_map.get(self.send_lang_var.get(), "en"),
+            provider_mode=self.provider_mode_var.get(),
             baidu_appid=self.baidu_appid_entry.get().strip(),
             baidu_secret=self.baidu_secret_entry.get().strip(),
         )

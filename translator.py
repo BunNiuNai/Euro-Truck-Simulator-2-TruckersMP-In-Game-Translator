@@ -25,6 +25,7 @@ _ALPHA_RE = re.compile(r"[a-zA-Z]")
 CACHE_SIZE = 1000
 BATCH_WINDOW = 0.3  # seconds to wait for more messages before sending batch
 BATCH_SEPARATOR = "\n---\n"
+PROVIDER_TIMEOUT = 5.0  # seconds before giving up on a provider in sequential mode
 
 
 class ProviderHealth:
@@ -349,7 +350,7 @@ class Translator(threading.Thread):
 
     # ── Provider calling ──
 
-    def _call_provider(self, provider: dict, text: str) -> str:
+    def _call_provider(self, provider: dict, text: str, timeout: float = 8.0) -> str:
         """Call a single LLM provider. Raises exception on failure."""
         endpoint = provider["endpoint"].strip()
         if not endpoint.startswith(("http://", "https://")):
@@ -370,10 +371,14 @@ class Translator(threading.Thread):
             "Authorization": f"Bearer {provider['api_key']}",
         }
 
-        resp = self._get_client().post(endpoint, json=payload, headers=headers)
-        resp.raise_for_status()
-        data = resp.json()
-        return data["choices"][0]["message"]["content"].strip()
+        client = httpx.Client(timeout=timeout)
+        try:
+            resp = client.post(endpoint, json=payload, headers=headers)
+            resp.raise_for_status()
+            data = resp.json()
+            return data["choices"][0]["message"]["content"].strip()
+        finally:
+            client.close()
 
     def _call_api(self, text: str) -> str:
         """Call providers with parallel race + serial fallback.
@@ -432,6 +437,10 @@ class Translator(threading.Thread):
                 cooling_names = [p["label"] for p in providers if p not in active]
                 log.warn("LLM", f"跳过冷却中的 Provider: {', '.join(cooling_names)}")
 
+        # Sequential mode: try providers one by one with 5s timeout each
+        if self.cfg.provider_mode == "sequential":
+            return self._call_sequential(active, providers, text)
+
         log = get_logger()
 
         # Round 1: Parallel race (only active providers)
@@ -463,6 +472,56 @@ class Translator(threading.Thread):
         for p in retry_list:
             try:
                 result = self._call_provider(p, text)
+                self._note_provider_result(p["label"], True)
+                if log:
+                    log.info("LLM", f"重试成功: {p['label']}")
+                return result
+            except Exception:
+                self._note_provider_result(p["label"], False)
+                time.sleep(0.18)
+
+        raise Exception(" | ".join(errors) if errors else "所有 Provider 翻译失败")
+
+    def _call_sequential(self, active, all_providers, text):
+        """Sequential provider fallback: try each in order, 5s timeout each."""
+        log = get_logger()
+        errors = []
+
+        for p in active:
+            label = p["label"]
+            if log:
+                log.info("LLM", f"顺序尝试: {label}")
+            try:
+                result = self._call_provider(p, text, timeout=PROVIDER_TIMEOUT)
+                self._note_provider_result(label, True)
+                if log:
+                    log.info("LLM", f"顺序成功: {label}")
+                return result
+            except (httpx.ConnectError, httpx.TimeoutException) as e:
+                err = self._format_error(e)
+                errors.append(f"{label}: {err}")
+                self._note_provider_result(label, False)
+                if log:
+                    log.warn("LLM", f"顺序失败(超时/连接): {label} - {err}")
+            except httpx.HTTPStatusError as e:
+                err = self._format_error(e)
+                errors.append(f"{label}: {err}")
+                self._note_provider_result(label, False)
+                if log:
+                    log.warn("LLM", f"顺序失败(HTTP {e.response.status_code}): {label} - {err}")
+            except Exception as e:
+                err = self._format_error(e)
+                errors.append(f"{label}: {err}")
+                self._note_provider_result(label, False)
+                if log:
+                    log.warn("LLM", f"顺序失败: {label} - {err}")
+
+        # All active failed, serial retry all (including cooling)
+        if log:
+            log.warn("LLM", f"全部顺序失败，进入串行重试 ({len(all_providers)} providers)")
+        for p in all_providers:
+            try:
+                result = self._call_provider(p, text, timeout=8.0)
                 self._note_provider_result(p["label"], True)
                 if log:
                     log.info("LLM", f"重试成功: {p['label']}")

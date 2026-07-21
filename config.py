@@ -224,6 +224,7 @@ class AppConfig:
     baidu_appid: str = ""   # Baidu Translate APP ID
     baidu_secret: str = ""  # Baidu Translate secret key
     debug_log: bool = False  # enable debug logging to %TEMP%
+    provider_mode: str = "race"  # "race" = parallel race, "sequential" = sequential fallback
     llm_providers: list[dict] = field(default_factory=list)  # NEW: list of provider dicts
 
 
