@@ -41,6 +41,8 @@ def build():
         "--hidden-import", "message_display",
         "--hidden-import", "hotkey_manager",
         "--hidden-import", "compose_sender",
+        "--hidden-import", "input_sender",
+        "--hidden-import", "tray_icon",
         "--clean",
         MAIN,
     ]

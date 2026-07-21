@@ -938,8 +938,40 @@ class SettingsDialog:
         self._ad_timer_after_id = None
         self._ad_total_seconds = 0
 
+        # -- 使用说明卡片 --
+        help_text = (
+            "TMP广告软件 使用说明:\n\n"
+            "1.发送快捷键:Y(固定)\n"
+            "2.发送按键:Enter(固定)\n"
+            "3.倒计时(分钟):设置每次发送消息的间隔时间\n"
+            "4.发送消息1-5:设置需要循环发送的广告消息\n"
+            "5.当前发送:显示正在发送第几条消息(黄色高亮)\n"
+            "6.发送日志:记录每次发送的时间和内容\n"
+            "7.开始按钮:开始自动发送消息\n"
+            "8.暂停按钮:停止自动发送消息\n\n"
+            "使用步骤:\n"
+            "1.填写消息内容(需要发送的广告)\n"
+            "2.设置倒计时时间(分钟)\n"
+            "3.点击开始按钮,软件会按1、2、3、4、5、1的顺序循环发送消息\n"
+            "4.点击暂停按钮停止发送\n\n"
+            "注意:请在安全的环境中使用本软件,遵守当地法律法规。\n"
+        )
+        help_card = self._card(inner, padx=16, pady=12)
+        help_card.pack(fill=tk.X, pady=(0, 4))
+        help_label = tk.Label(help_card, text=help_text,
+            bg=self._CARD_BG, fg=self._TEXT_SEC,
+            font=("Microsoft YaHei", 9), anchor=tk.W, justify=tk.LEFT)
+        help_label.pack(fill=tk.X, padx=12, pady=10)
+
+        # 红色警告
+        warn_label = tk.Label(help_card,
+            text="⚠ 使用广告发送请不要关闭设置界面，直接点击游戏屏幕即可",
+            bg=self._CARD_BG, fg=self._RED,
+            font=("Microsoft YaHei", 9, "bold"), anchor=tk.W)
+        warn_label.pack(fill=tk.X, padx=12, pady=(0, 10))
+
         # -- 基本设置卡片 --
-        self._section_label(inner, "BASIC SETTINGS  /  基本设置").pack(fill=tk.X, pady=(0, 8))
+        self._section_label(inner, "BASIC SETTINGS  /  基本设置").pack(fill=tk.X, pady=(8, 8))
         card1 = self._card(inner, padx=16, pady=12)
         card1.pack(fill=tk.X, pady=(0, 4))
         card1.columnconfigure(1, weight=1)
