@@ -478,6 +478,7 @@ class SettingsDialog:
             ("appearance", "外观"),
             ("logs", "📋 翻译器日志"),
             ("messages", "💬 消息日志"),
+            ("ad", "📢 广告发送"),
         ]
         for i, (key, label) in enumerate(tab_names):
             btn = tk.Label(self._tab_bar, text=label,
@@ -505,6 +506,7 @@ class SettingsDialog:
         self._build_appearance_tab()
         self._build_logs_tab()
         self._build_messages_tab()
+        self._build_ad_tab()
 
         # ---- bottom buttons (always visible, outside tabs) ----
         btn_row = tk.Frame(outer, bg=page_bg)
@@ -900,6 +902,127 @@ class SettingsDialog:
         self._pill_btn(btn_row, "🔄 刷新", self._refresh_messages, accent=False).pack(side=tk.LEFT)
         self._pill_btn(btn_row, "📂 打开日志文件夹", self._open_log_dir, accent=False).pack(side=tk.LEFT, padx=(8, 0))
         self._pill_btn(btn_row, "🗑 删除日志", self._delete_message_logs, accent=False).pack(side=tk.RIGHT)
+
+    # ------------------------------------------------------------------
+    #  ad sender tab
+    # ------------------------------------------------------------------
+    def _build_ad_tab(self):
+        """广告发送 Tab — 定时循环发送游戏内广告消息."""
+        frame = self._tab_frames["ad"] = tk.Frame(self._content_area, bg=self._PAGE_BG)
+        frame.columnconfigure(0, weight=1)
+
+        canvas = tk.Canvas(frame, bg=self._PAGE_BG, highlightthickness=0, bd=0)
+        self._canvases["ad"] = canvas
+        scrollbar = ttk.Scrollbar(frame, orient=tk.VERTICAL, command=canvas.yview)
+        canvas.configure(yscrollcommand=scrollbar.set)
+        canvas.grid(row=0, column=0, sticky="nsew")
+        scrollbar.grid(row=0, column=1, sticky="ns")
+        frame.rowconfigure(0, weight=1)
+
+        inner = tk.Frame(canvas, bg=self._PAGE_BG, padx=20, pady=16)
+        inner.columnconfigure(0, weight=1)
+        inner_id = canvas.create_window((0, 0), window=inner, anchor=tk.NW)
+
+        def _on_inner_configure(event):
+            canvas.configure(scrollregion=canvas.bbox("all"))
+        inner.bind("<Configure>", _on_inner_configure)
+
+        def _on_canvas_configure(event):
+            canvas.itemconfig(inner_id, width=event.width)
+        canvas.bind("<Configure>", _on_canvas_configure)
+
+        # -- 运行时状态 --
+        self._ad_running = False
+        self._ad_countdown_seconds = 0
+        self._ad_current_index = 0
+        self._ad_timer_after_id = None
+        self._ad_total_seconds = 0
+
+        # -- 基本设置卡片 --
+        self._section_label(inner, "BASIC SETTINGS  /  基本设置").pack(fill=tk.X, pady=(0, 8))
+        card1 = self._card(inner, padx=16, pady=12)
+        card1.pack(fill=tk.X, pady=(0, 4))
+        card1.columnconfigure(1, weight=1)
+
+        r = 0
+        self._label(card1, "Countdown (min) / 倒计时(分钟)").grid(
+            row=r, column=0, sticky=tk.W, pady=5, padx=(16, 8))
+        self.ad_countdown_entry = self._entry(card1, width=10)
+        self.ad_countdown_entry.grid(row=r, column=1, sticky=tk.W, pady=5, padx=(0, 16))
+        r += 1
+
+        self._label(card1, "Remaining (sec) / 剩余时间(秒)").grid(
+            row=r, column=0, sticky=tk.W, pady=5, padx=(16, 8))
+        self.ad_remaining_label = tk.Label(card1, text="0",
+            bg=self._CARD_BG, fg=self._ACCENT,
+            font=("Microsoft YaHei", 22, "bold"), anchor=tk.W)
+        self.ad_remaining_label.grid(row=r, column=1, sticky=tk.W, pady=5, padx=(0, 16))
+        r += 1
+
+        self._label(card1, "Current / 当前发送").grid(
+            row=r, column=0, sticky=tk.W, pady=5, padx=(16, 8))
+        self.ad_current_label = tk.Label(card1, text="（未启动）",
+            bg=self._CARD_BG, fg=self._TEXT_SEC,
+            font=("Microsoft YaHei", 10, "bold"), anchor=tk.W)
+        self.ad_current_label.grid(row=r, column=1, sticky=tk.W, pady=5, padx=(0, 16))
+
+        # -- 广告消息卡片 --
+        self._section_label(inner, "AD MESSAGES  /  广告消息").pack(fill=tk.X, pady=(8, 8))
+        msg_card = self._card(inner, padx=12, pady=8)
+        msg_card.pack(fill=tk.X, pady=(0, 4))
+        msg_card.columnconfigure(1, weight=1)
+
+        _MSG_COLORS = ["#e74c3c", "#e67e22", "#3cb371", "#4090e0", "#9b59b6"]
+        self._ad_message_areas: list[tk.Text] = []
+        self._ad_dot_labels: list[tk.Label] = []
+
+        for i in range(5):
+            dot = tk.Label(msg_card, text="●", bg=self._CARD_BG, fg=_MSG_COLORS[i],
+                          font=("Microsoft YaHei", 12, "bold"))
+            dot.grid(row=i, column=0, sticky=tk.NW, padx=(12, 4), pady=(8, 0))
+            self._ad_dot_labels.append(dot)
+
+            tk.Label(msg_card, text=f"消息 {i+1}", bg=self._CARD_BG, fg=self._TEXT,
+                    font=("Microsoft YaHei", 10)).grid(
+                row=i, column=0, sticky=tk.NW, padx=(30, 4), pady=(10, 0))
+
+            area = tk.Text(msg_card, height=3, width=40,
+                          font=("Microsoft YaHei", 10),
+                          bg=self._INPUT_BG, fg=self._TEXT,
+                          wrap=tk.WORD,
+                          borderwidth=1, highlightthickness=1,
+                          highlightbackground=self._INPUT_BORDER,
+                          highlightcolor=self._ACCENT,
+                          padx=8, pady=4)
+            area.grid(row=i, column=1, sticky=tk.EW, padx=(8, 12), pady=3)
+            self._ad_message_areas.append(area)
+
+        # -- 按钮栏 --
+        btn_frame = tk.Frame(inner, bg=self._PAGE_BG)
+        btn_frame.pack(fill=tk.X, pady=(12, 4))
+
+        self.ad_start_btn = tk.Label(btn_frame, text="▶  开始", bg="#3cb371", fg="#ffffff",
+            font=("Microsoft YaHei", 11, "bold"), padx=28, pady=8, cursor="hand2")
+        self.ad_start_btn.pack(side=tk.LEFT, padx=(0, 12))
+        self.ad_start_btn.bind("<Button-1>", lambda e: self._ad_start())
+        self.ad_start_btn.bind("<Enter>", lambda e: self.ad_start_btn.configure(bg="#2e965a"))
+        self.ad_start_btn.bind("<Leave>", lambda e: self.ad_start_btn.configure(bg="#3cb371"))
+
+        self.ad_stop_btn = tk.Label(btn_frame, text="■  暂停", bg="#666666", fg="#ffffff",
+            font=("Microsoft YaHei", 11, "bold"), padx=28, pady=8, cursor="arrow")
+        self.ad_stop_btn.pack(side=tk.LEFT)
+        self.ad_stop_btn.bind("<Button-1>", lambda e: None)  # disabled initially
+
+        # -- 发送日志卡片 --
+        self._section_label(inner, "SEND LOG  /  发送日志").pack(fill=tk.X, pady=(8, 8))
+        log_card = self._card(inner, padx=4, pady=4)
+        log_card.pack(fill=tk.BOTH, expand=True, pady=(0, 4))
+
+        self.ad_log_text = tk.Text(log_card, height=8, width=50,
+            font=("Consolas", 9), bg=self._INPUT_BG, fg=self._TEXT_SEC,
+            wrap=tk.WORD, state=tk.DISABLED,
+            borderwidth=0, highlightthickness=0, padx=8, pady=6)
+        self.ad_log_text.pack(fill=tk.BOTH, expand=True, padx=4, pady=4)
 
     def _refresh_messages(self):
         """Reload message log from the overlay window."""
