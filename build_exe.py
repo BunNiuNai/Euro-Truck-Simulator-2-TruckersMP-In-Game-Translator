@@ -53,17 +53,24 @@ def build():
 
 
 def _convert_icon():
-    """Convert xintubiao.png to icon.ico for PyInstaller."""
+    """Convert xintubiao.png to icon.ico for PyInstaller (high quality)."""
     try:
         from PIL import Image
         img = Image.open(ICON_SRC)
-        # Resize to standard icon sizes
+        # Generate high-quality resampled sizes
         sizes = [(256, 256), (128, 128), (64, 64), (48, 48), (32, 32), (16, 16)]
-        img.save(ICON, format="ICO", sizes=sizes)
-        print(f"[*] Converted {ICON_SRC} -> {ICON}")
+        resampled = []
+        for w, h in sizes:
+            # Use LANCZOS for sharp downscaling, keep smaller sizes crisp
+            r = img.resize((w, h), Image.Resampling.LANCZOS)
+            resampled.append(r)
+        # Save first image with all sizes appended
+        resampled[0].save(ICON, format="ICO", sizes=sizes,
+                          append_images=resampled[1:])
+        print(f"[*] Converted {ICON_SRC} -> {ICON} ({len(sizes)} sizes)")
     except Exception as e:
         print(f"[!] Could not convert icon: {e}")
-        # Fallback: try to use PNG directly (PyInstaller may handle it)
+        # Fallback: try to use PNG directly
         shutil.copy(ICON_SRC, ICON)
 
 
