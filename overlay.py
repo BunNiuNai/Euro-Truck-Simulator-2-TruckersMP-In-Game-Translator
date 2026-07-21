@@ -595,7 +595,14 @@ class OverlayWindow:
         if baidu_count > 0:
             self._show_notice(f"百度翻译优化了 {baidu_count} 条翻译", "#f44747")
         elif new_count > 0:
-            self._show_notice(f"大模型翻译了 {new_count} 条消息", "#4ec9b0", "#1a2a1a")
+            backend = self.cfg.translation_backend
+            if backend == "baidu":
+                notice = f"百度翻译了 {new_count} 条消息"
+            elif backend == "llm+baidu":
+                notice = f"大模型+百度翻译了 {new_count} 条消息"
+            else:
+                notice = f"大模型翻译了 {new_count} 条消息"
+            self._show_notice(notice, "#4ec9b0", "#1a2a1a")
 
         self._update_stats()
         self.root.after(250, self.poll_messages)
