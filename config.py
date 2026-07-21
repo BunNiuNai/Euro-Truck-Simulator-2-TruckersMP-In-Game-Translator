@@ -226,6 +226,8 @@ class AppConfig:
     debug_log: bool = False  # enable debug logging to %TEMP%
     provider_mode: str = "race"  # "race" = parallel race, "sequential" = sequential fallback
     show_language_label: bool = True  # show [语言] label before each translated message
+    ad_messages: list[str] = field(default_factory=lambda: [""] * 5)  # ad sender messages
+    ad_countdown: str = ""  # ad sender countdown (minutes)
     llm_providers: list[dict] = field(default_factory=list)  # NEW: list of provider dicts
 
 

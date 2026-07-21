@@ -244,16 +244,20 @@ def clipboard_get() -> str:
 # Send sequence
 # ---------------------------------------------------------------------------
 
-def send_chat_message(text: str, hotkey: str) -> str | None:
+def send_chat_message(text: str, hotkey: str, delay_ms: int = 500) -> str | None:
     """Simulate keyboard to send a chat message in game.
 
     Sequence:
-      1. Press hotkey to open game chat, wait 0.3s
+      1. Press hotkey to open game chat
       2. Set clipboard via Win32 API
-      3. Ctrl+V to paste, wait 0.3s
+      3. Ctrl+V to paste
       4. Enter to send
+
+    Args:
+        delay_ms: wait time between keystrokes in ms (default 500ms)
     """
     try:
+        delay_s = delay_ms / 1000.0
         _debug_log(f"send_chat_message: text={text!r}, hotkey={hotkey!r}")
         hk = _vk_code(hotkey)
         if hk == 0:
@@ -262,17 +266,17 @@ def send_chat_message(text: str, hotkey: str) -> str | None:
 
         _debug_log("send_chat_message: pressing hotkey")
         _press_key(hk)
-        time.sleep(0.3)
+        time.sleep(delay_s)
 
         _debug_log("send_chat_message: calling clipboard_set")
         clipboard_set(text)
         _debug_log("send_chat_message: clipboard_set done")
 
         _combo([VK_CONTROL, VK_V])
-        time.sleep(0.3)
+        time.sleep(delay_s)
 
         _press_key(VK_RETURN)
-        time.sleep(0.3)
+        time.sleep(delay_s)
 
         _debug_log("send_chat_message: sequence complete, returning None")
         return None
