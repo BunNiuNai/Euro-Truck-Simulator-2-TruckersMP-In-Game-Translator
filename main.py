@@ -1452,6 +1452,13 @@ class SettingsDialog:
         self.backend_var.set(self.cfg.translation_backend)
         self._rebuild_provider_list()
         self._on_backend_changed()
+        # 恢复广告发送数据
+        for i in range(5):
+            if i < len(self.cfg.ad_messages):
+                msg = self.cfg.ad_messages[i]
+                if msg:
+                    self._ad_message_areas[i].insert("1.0", msg)
+        self.ad_countdown_entry.insert(0, self.cfg.ad_countdown)
 
     def _save(self):
         self._gather_providers()
@@ -1476,6 +1483,8 @@ class SettingsDialog:
             send_target_language=self._lang_map.get(self.send_lang_var.get(), "en"),
             provider_mode=self.provider_mode_var.get(),
             show_language_label=self.lang_label_var.get(),
+            ad_messages=[a.get("1.0", tk.END).strip() for a in self._ad_message_areas],
+            ad_countdown=self.ad_countdown_entry.get().strip(),
             baidu_appid=self.baidu_appid_entry.get().strip(),
             baidu_secret=self.baidu_secret_entry.get().strip(),
         )
