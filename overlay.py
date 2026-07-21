@@ -478,8 +478,8 @@ class OverlayWindow:
         """Return recent messages for the message log (settings tab)."""
         return list(self._messages)
 
-    def add_message(self, player_name: str, original: str, translated: str, is_self: bool = False):
-        self._messages.append((player_name, original, translated, is_self))
+    def add_message(self, player_name: str, original: str, translated: str, is_self: bool = False, detected_language: str = ""):
+        self._messages.append((player_name, original, translated, is_self, detected_language))
         # Write to message log file
         try:
             from logger import get_logger
@@ -519,8 +519,10 @@ class OverlayWindow:
         # Insert new messages before the grip marker (if any)
         insert_pos = "end-1c" if self._is_overlay else tk.END
         for i in range(self._displayed_count, new_total):
-            player, orig, trans, is_self = self._messages[i]
-            self._insert_one_at(insert_pos, player, orig, trans, is_self)
+            entry = self._messages[i]
+            player, orig, trans, is_self = entry[0], entry[1], entry[2], entry[3]
+            detected_lang = entry[4] if len(entry) >= 5 else ""
+            self._insert_one_at(insert_pos, player, orig, trans, is_self, detected_lang)
 
         self._displayed_count = new_total
 
@@ -533,10 +535,13 @@ class OverlayWindow:
         self.text.configure(state=tk.DISABLED)
         self.text.see(tk.END)
 
-    def _insert_one_at(self, pos, player: str, orig: str, trans: str, is_self: bool):
+    def _insert_one_at(self, pos, player: str, orig: str, trans: str, is_self: bool, detected_lang: str = ""):
         """Insert a single message at the given position."""
         prefix = "(You) " if is_self else ""
         tags = []
+        # Language label
+        if self.cfg.show_language_label and detected_lang and not is_self:
+            tags.append(("player", f"[{detected_lang}] "))
         tags.append(("player", f"{prefix}["))
         tags.append(("player" if not is_self else "self_prefix", f"{player}"))
         tags.append(("player", "] "))
@@ -574,6 +579,7 @@ class OverlayWindow:
                     self.add_message(
                         item.player_name, item.original_text,
                         translated, item.is_self,
+                        item.detected_language,
                     )
                     self.root.deiconify()
                     if not item.is_self:

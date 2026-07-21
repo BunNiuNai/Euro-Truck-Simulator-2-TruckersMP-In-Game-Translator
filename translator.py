@@ -22,6 +22,76 @@ from message_types import DisplayMessage, TranslationStats
 _CJK_RE = re.compile(r"[一-鿿]")
 _ALPHA_RE = re.compile(r"[a-zA-Z]")
 
+# ── Language detection ──
+_LANG_PATTERNS: list[tuple[str, re.Pattern]] = [
+    ("日语", re.compile(r"[぀-ゟ゠-ヿ]")),             # Hiragana + Katakana
+    ("韩语", re.compile(r"[가-힯ᄀ-ᇿ]")),             # Hangul
+    ("俄语", re.compile(r"[Ѐ-ӿ]")),                   # Cyrillic
+    ("中文", re.compile(r"[一-鿿]")),                   # CJK
+    ("泰语", re.compile(r"[฀-๿]")),                   # Thai
+    ("阿拉伯语", re.compile(r"[؀-ۿ]")),               # Arabic
+]
+
+_LATIN_MARKERS: list[tuple[str, str]] = [
+    ("德语", "ßäöüÄÖÜ"),
+    ("法语", "çèéêëàâîïôùûœæÇÈÉÊËÀÂÎÏÔÙÛŒÆ"),
+    ("西班牙语", "ñáéíóúü¿¡ÑÁÉÍÓÚÜ"),
+    ("葡萄牙语", "ãõâêôàáéíóúçÃÕÂÊÔÀÁÉÍÓÚÇ"),
+    ("意大利语", "àèéìòùÀÈÉÌÒÙ"),
+]
+
+_ENGLISH_COMMON = frozenset({
+    "the", "is", "are", "you", "me", "i", "he", "she", "what",
+    "where", "when", "how", "why", "can", "will", "not", "this",
+    "that", "and", "for", "have", "with", "your", "but", "all",
+    "was", "it", "my", "do", "we", "they", "no", "yes", "just",
+})
+
+
+def detect_language(text: str) -> str:
+    """Detect the language of a given text.
+    Returns Chinese name of detected language, e.g. '英语', '德语', '俄语'.
+    Uses Unicode range detection for non-Latin scripts, and Latin marker
+    characters for Latin-based languages.
+    """
+    if not text or not text.strip():
+        return "未知"
+
+    text_stripped = text.strip()
+
+    # Priority 1: Non-Latin scripts (strong signal)
+    scores: dict[str, int] = {}
+    for lang_name, pattern in _LANG_PATTERNS:
+        matches = len(pattern.findall(text_stripped))
+        if matches > 0:
+            scores[lang_name] = matches
+
+    if scores:
+        return max(scores, key=scores.get)
+
+    # Priority 2: Latin-script language detection
+    # Use re.ASCII so that \W matches accented Latin chars (ç, é, ñ, etc.)
+    if re.match(r"^[a-zA-Z\s\d\W]+$", text_stripped[:20], re.ASCII):
+        best_lang = ""
+        best_score = 0
+        for lang_name, markers in _LATIN_MARKERS:
+            score = sum(1 for ch in markers if ch in text_stripped)
+            if score > best_score:
+                best_score = score
+                best_lang = lang_name
+
+        if best_lang and best_score > 0:
+            return best_lang
+
+        words = set(text_stripped.lower().split())
+        if words & _ENGLISH_COMMON:
+            return "英语"
+
+        return "英语"
+
+    return "未知"
+
+
 CACHE_SIZE = 1000
 BATCH_WINDOW = 0.3  # seconds to wait for more messages before sending batch
 BATCH_SEPARATOR = "\n---\n"
@@ -195,10 +265,12 @@ class Translator(threading.Thread):
                 text = batch[0].text
                 translated = self._call_api(text)
                 self._cache.put(text, translated)
+                detected = detect_language(text)
                 self.out_queue.put(DisplayMessage(
                     player_name=batch[0].player_name,
                     original_text=text,
                     translated_text=translated,
+                    detected_language=detected,
                 ))
             else:
                 combined = BATCH_SEPARATOR.join(m.text for m in batch)
@@ -207,10 +279,12 @@ class Translator(threading.Thread):
                 for i, msg in enumerate(batch):
                     trans = parts[i] if i < len(parts) else msg.text
                     self._cache.put(msg.text, trans)
+                    detected = detect_language(msg.text)
                     self.out_queue.put(DisplayMessage(
                         player_name=msg.player_name,
                         original_text=msg.text,
                         translated_text=trans,
+                        detected_language=detected,
                     ))
         except Exception as e:
             err_msg = self._format_error(e)
@@ -218,10 +292,12 @@ class Translator(threading.Thread):
             if log:
                 log.error("LLM", f"翻译失败: {err_msg}")
             for msg in batch:
+                detected = detect_language(msg.text)
                 self.out_queue.put(DisplayMessage(
                     player_name=msg.player_name,
                     original_text=msg.text,
                     translated_text=err_msg,
+                    detected_language=detected,
                 ))
 
     def _flush_baidu(self, batch):
@@ -231,19 +307,23 @@ class Translator(threading.Thread):
                     self.cfg.baidu_appid, self.cfg.baidu_secret, msg.text
                 )
                 self._cache.put(msg.text, translated)
+                detected = detect_language(msg.text)
                 self.out_queue.put(DisplayMessage(
                     player_name=msg.player_name,
                     original_text=msg.text,
                     translated_text=translated,
+                    detected_language=detected,
                 ))
             except Exception as e:
                 log = get_logger()
                 if log:
                     log.error("BDU", f"百度翻译失败: {e}")
+                detected = detect_language(msg.text)
                 self.out_queue.put(DisplayMessage(
                     player_name=msg.player_name,
                     original_text=msg.text,
                     translated_text=f"[百度翻译失败] {e}",
+                    detected_language=detected,
                 ))
 
     def _flush_hybrid(self, batch):
@@ -263,10 +343,12 @@ class Translator(threading.Thread):
         except Exception as e:
             err_msg = self._format_error(e)
             for msg in batch:
+                detected = detect_language(msg.text)
                 self.out_queue.put(DisplayMessage(
                     player_name=msg.player_name,
                     original_text=msg.text,
                     translated_text=err_msg,
+                    detected_language=detected,
                 ))
             return
 
@@ -290,6 +372,7 @@ class Translator(threading.Thread):
         # Step 3: compare and emit
         baidu_override_count = 0
         for msg in batch:
+            detected = detect_language(msg.text)
             llm_trans = llm_results.get(msg.text, msg.text)
             baidu_trans = baidu_results.get(msg.text)
             if baidu_trans is not None and _translations_differ(llm_trans, baidu_trans):
@@ -301,6 +384,7 @@ class Translator(threading.Thread):
                     original_text=msg.text,
                     translated_text=baidu_trans,
                     baidu_fixed=True,
+                    detected_language=detected,
                 ))
             else:
                 self._cache.put(msg.text, llm_trans)
@@ -308,6 +392,7 @@ class Translator(threading.Thread):
                     player_name=msg.player_name,
                     original_text=msg.text,
                     translated_text=llm_trans,
+                    detected_language=detected,
                 ))
 
         if baidu_override_count > 0:

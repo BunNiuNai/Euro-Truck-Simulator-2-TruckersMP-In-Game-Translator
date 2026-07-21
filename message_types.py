@@ -10,6 +10,7 @@ class DisplayMessage:
     translated_text: str
     is_self: bool = False
     baidu_fixed: bool = False  # True if Baidu override was applied
+    detected_language: str = ""  # e.g. "英语", "德语", "俄语"
 
 
 @dataclass

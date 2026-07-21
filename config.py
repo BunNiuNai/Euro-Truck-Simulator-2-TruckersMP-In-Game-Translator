@@ -225,6 +225,7 @@ class AppConfig:
     baidu_secret: str = ""  # Baidu Translate secret key
     debug_log: bool = False  # enable debug logging to %TEMP%
     provider_mode: str = "race"  # "race" = parallel race, "sequential" = sequential fallback
+    show_language_label: bool = True  # show [语言] label before each translated message
     llm_providers: list[dict] = field(default_factory=list)  # NEW: list of provider dicts
 
 

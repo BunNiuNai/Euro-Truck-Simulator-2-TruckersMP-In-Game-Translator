@@ -817,7 +817,18 @@ class SettingsDialog:
                             selectcolor=self._CARD_BG,
                             activebackground=self._CARD_BG,
                             activeforeground=self._ACCENT)
-        cb.grid(row=r, column=0, columnspan=2, sticky=tk.W, padx=16, pady=(4, 12))
+        cb.grid(row=r, column=0, columnspan=2, sticky=tk.W, padx=16, pady=(4, 2))
+        r += 1
+
+        self.lang_label_var = tk.BooleanVar(value=self.cfg.show_language_label)
+        cb2 = tk.Checkbutton(card3, text="Show Language Label / 显示语言标签",
+                            variable=self.lang_label_var,
+                            bg=self._CARD_BG, fg=self._TEXT,
+                            font=("Microsoft YaHei", 10),
+                            selectcolor=self._CARD_BG,
+                            activebackground=self._CARD_BG,
+                            activeforeground=self._ACCENT)
+        cb2.grid(row=r, column=0, columnspan=2, sticky=tk.W, padx=16, pady=(4, 12))
 
         # Ensure opacity live value is initialized
         self._on_opacity_change(self.cfg.window_opacity)
@@ -1204,6 +1215,7 @@ class SettingsDialog:
             target_language=self._lang_map.get(self.lang_var.get(), "zh-CN"),
             send_target_language=self._lang_map.get(self.send_lang_var.get(), "en"),
             provider_mode=self.provider_mode_var.get(),
+            show_language_label=self.lang_label_var.get(),
             baidu_appid=self.baidu_appid_entry.get().strip(),
             baidu_secret=self.baidu_secret_entry.get().strip(),
         )
