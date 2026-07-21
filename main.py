@@ -1024,6 +1024,143 @@ class SettingsDialog:
             borderwidth=0, highlightthickness=0, padx=8, pady=6)
         self.ad_log_text.pack(fill=tk.BOTH, expand=True, padx=4, pady=4)
 
+    # ------------------------------------------------------------------
+    #  ad sender business logic
+    # ------------------------------------------------------------------
+    def _ad_validate_countdown(self, text: str) -> str | None:
+        """校验倒计时输入。返回 None=通过, 否则返回错误消息."""
+        if not text:
+            return "请输入倒计时时间"
+        try:
+            minutes = int(text)
+        except ValueError:
+            return "请输入有效的整数"
+        if minutes <= 0:
+            return "倒计时必须大于 0 分钟"
+        if minutes > 1440:
+            return "倒计时不能超过 1440 分钟（24 小时）"
+        return None
+
+    def _ad_advance_index(self):
+        """跳到下一个非空消息索引."""
+        start = self._ad_current_index
+        for _ in range(5):
+            self._ad_current_index = (self._ad_current_index + 1) % 5
+            text = self._ad_message_areas[self._ad_current_index].get("1.0", tk.END).strip()
+            if text:
+                return
+        self._ad_current_index = (start + 1) % 5
+
+    def _ad_highlight(self, index: int):
+        """高亮第 index 行消息."""
+        colors = ["#e74c3c", "#e67e22", "#3cb371", "#4090e0", "#9b59b6"]
+        for i in range(5):
+            is_current = (i == index)
+            self._ad_message_areas[i].configure(
+                bg="#fff3cd" if is_current else self._INPUT_BG)
+            self._ad_dot_labels[i].configure(
+                text="▶" if is_current else "●",
+                fg=self._ACCENT if is_current else colors[i])
+        self.ad_current_label.config(text=f"消息 {index + 1}", fg=self._ACCENT)
+
+    def _ad_clear_highlight(self):
+        """清除所有消息高亮."""
+        colors = ["#e74c3c", "#e67e22", "#3cb371", "#4090e0", "#9b59b6"]
+        for i in range(5):
+            self._ad_message_areas[i].configure(bg=self._INPUT_BG)
+            self._ad_dot_labels[i].configure(text="●", fg=colors[i])
+        self.ad_current_label.config(text="（未启动）", fg=self._TEXT_SEC)
+
+    def _ad_append_log(self, text: str):
+        """追加日志行, 超 500 行裁剪最早记录."""
+        from datetime import datetime
+        ts = datetime.now().strftime("%H:%M:%S")
+        self.ad_log_text.configure(state=tk.NORMAL)
+        self.ad_log_text.insert(tk.END, f"[{ts}] {text}\n")
+        line_count = int(self.ad_log_text.index("end-1c").split(".")[0])
+        if line_count > 500:
+            self.ad_log_text.delete("1.0", f"{line_count - 500}.0")
+        self.ad_log_text.configure(state=tk.DISABLED)
+        self.ad_log_text.see(tk.END)
+
+    def _ad_send_current(self):
+        """后台线程: 发送当前消息到游戏."""
+        text = self._ad_message_areas[self._ad_current_index].get("1.0", tk.END).strip()
+        if not text:
+            return
+        from input_sender import send_chat_message
+        idx = self._ad_current_index
+        preview = text[:30] + "..." if len(text) > 30 else text
+        err = send_chat_message(text, "y", delay_ms=500)
+        if err:
+            self.top.after(0, lambda: self._ad_append_log(f"发送失败 消息{idx+1}: {err}"))
+        else:
+            self.top.after(0, lambda: self._ad_append_log(f"已发送 消息{idx+1}: {preview}"))
+
+    def _ad_schedule_tick(self):
+        """每秒回调: 更新倒计时, 归零时发送消息并重置."""
+        if not self._ad_running:
+            return
+        self.ad_remaining_label.config(text=str(self._ad_countdown_seconds))
+        if self._ad_countdown_seconds <= 0:
+            import threading
+            threading.Thread(target=self._ad_send_current, daemon=True).start()
+            self._ad_advance_index()
+            self.top.after(0, lambda: self._ad_highlight(self._ad_current_index))
+            self._ad_countdown_seconds = self._ad_total_seconds
+        self._ad_countdown_seconds -= 1
+        self._ad_timer_after_id = self.top.after(1000, self._ad_schedule_tick)
+
+    def _ad_start(self):
+        """校验输入 → 启动倒计时."""
+        countdown_text = self.ad_countdown_entry.get().strip()
+        has_msg = any(a.get("1.0", tk.END).strip() for a in self._ad_message_areas)
+        if not has_msg:
+            self._ad_append_log("错误: 请至少填写一条广告消息")
+            return
+        err = self._ad_validate_countdown(countdown_text)
+        if err:
+            self._ad_append_log(f"错误: {err}")
+            return
+        minutes = int(countdown_text)
+        self._ad_total_seconds = minutes * 60
+        self._ad_countdown_seconds = self._ad_total_seconds
+        self._ad_running = True
+        self._ad_current_index = -1
+        self._ad_advance_index()
+        # 按钮: 开始变灰, 暂停变可用
+        self.ad_start_btn.configure(bg="#666666", cursor="arrow")
+        self.ad_start_btn.unbind("<Enter>")
+        self.ad_start_btn.unbind("<Leave>")
+        self.ad_stop_btn.configure(bg="#e74c3c", cursor="hand2")
+        self.ad_stop_btn.unbind("<Button-1>")
+        self.ad_stop_btn.bind("<Button-1>", lambda e: self._ad_stop())
+        self.ad_stop_btn.bind("<Enter>", lambda e: self.ad_stop_btn.configure(bg="#c0392b"))
+        self.ad_stop_btn.bind("<Leave>", lambda e: self.ad_stop_btn.configure(bg="#e74c3c"))
+        self._ad_highlight(self._ad_current_index)
+        self.ad_remaining_label.config(text=str(self._ad_countdown_seconds))
+        self._ad_append_log(f"开始发送，间隔 {minutes} 分钟")
+        self._ad_schedule_tick()
+
+    def _ad_stop(self):
+        """停止倒计时."""
+        self._ad_running = False
+        if self._ad_timer_after_id is not None:
+            self.top.after_cancel(self._ad_timer_after_id)
+            self._ad_timer_after_id = None
+        self._ad_countdown_seconds = 0
+        self.ad_remaining_label.config(text="0")
+        self._ad_clear_highlight()
+        # 按钮: 暂停变灰, 开始变可用
+        self.ad_stop_btn.configure(bg="#666666", cursor="arrow")
+        self.ad_stop_btn.unbind("<Enter>")
+        self.ad_stop_btn.unbind("<Leave>")
+        self.ad_stop_btn.bind("<Button-1>", lambda e: None)
+        self.ad_start_btn.configure(bg="#3cb371", cursor="hand2")
+        self.ad_start_btn.bind("<Enter>", lambda e: self.ad_start_btn.configure(bg="#2e965a"))
+        self.ad_start_btn.bind("<Leave>", lambda e: self.ad_start_btn.configure(bg="#3cb371"))
+        self._ad_append_log("已暂停")
+
     def _refresh_messages(self):
         """Reload message log from the overlay window."""
         if not hasattr(self, 'msg_text') or not self.overlay:
