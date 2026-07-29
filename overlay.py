@@ -124,7 +124,6 @@ class OverlayWindow:
 
         self._stat_translated = _make_stat(self.stats_frame, "已翻译: ")
         self._stat_cached = _make_stat(self.stats_frame, "缓存命中: ")
-        self._stat_self = _make_stat(self.stats_frame, "跳过(自己): ")
         self._stat_saved = _make_stat(self.stats_frame, "节省: ")
 
         # Beijing time — bottom-right corner
@@ -625,7 +624,7 @@ class OverlayWindow:
         """Update Beijing time display every second."""
         from datetime import datetime, timezone, timedelta
         beijing = datetime.now(timezone.utc).astimezone(timezone(timedelta(hours=8)))
-        self._time_label.config(text=beijing.strftime("北京时间 %H:%M:%S"))
+        self._time_label.config(text=beijing.strftime("%H:%M:%S"))
         self.root.after(1000, self._update_clock)
 
     def _update_stats(self):
@@ -642,7 +641,6 @@ class OverlayWindow:
             )
         self._stat_translated.config(text=str(stats.translated))
         self._stat_cached.config(text=str(stats.cached))
-        self._stat_self.config(text=str(stats.self_skipped))
         self._stat_saved.config(text=stats.savings_pct())
 
     # ----- global hotkey (polling-based, no WNDPROC hook needed) -----
