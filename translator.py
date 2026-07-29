@@ -436,13 +436,26 @@ class Translator(threading.Thread):
     # ── Provider calling ──
 
     def _call_provider(self, provider: dict, text: str, timeout: float = 8.0) -> str:
-        """Call a single LLM provider. Raises exception on failure."""
-        endpoint = provider["endpoint"].strip()
+        """Call a single LLM provider. Raises exception on failure.
+        Supports extra_headers, extra_body, per-provider timeout, and api_format.
+        """
+        endpoint = provider.get("endpoint", "").strip()
+        if not endpoint:
+            raise Exception("Provider endpoint is empty")
         if not endpoint.startswith(("http://", "https://")):
             endpoint = "https://" + endpoint
 
+        api_key = provider.get("api_key", "")
+        model = provider.get("model", "")
+        api_format = provider.get("api_format", "openai")
+
+        # Per-provider timeout overrides the caller's timeout
+        provider_timeout = timeout
+        if "timeout" in provider and isinstance(provider["timeout"], (int, float)):
+            provider_timeout = float(provider["timeout"])
+
         payload = {
-            "model": provider["model"],
+            "model": model,
             "messages": [
                 {"role": "system", "content": self.cfg.system_prompt},
                 {"role": "user", "content": text},
@@ -451,12 +464,30 @@ class Translator(threading.Thread):
             "max_tokens": 500 if BATCH_SEPARATOR not in text else 500 * text.count(BATCH_SEPARATOR) + 500,
         }
 
+        # Merge extra_body fields (user-specified overrides, e.g. temperature)
+        extra_body = provider.get("extra_body", {})
+        if isinstance(extra_body, dict) and extra_body:
+            payload.update(extra_body)
+
         headers = {
             "Content-Type": "application/json",
-            "Authorization": f"Bearer {provider['api_key']}",
         }
 
-        client = httpx.Client(timeout=timeout)
+        # Build auth header based on api_format
+        if api_format == "anthropic":
+            headers["x-api-key"] = api_key
+            headers["anthropic-version"] = "2023-06-01"
+        else:
+            headers["Authorization"] = f"Bearer {api_key}"
+
+        # Merge extra_headers (template vars like {api_key} are resolved)
+        extra_headers = provider.get("extra_headers", {})
+        if isinstance(extra_headers, dict) and extra_headers:
+            for k, v in extra_headers.items():
+                resolved = v.replace("{api_key}", api_key)
+                headers[k] = resolved
+
+        client = httpx.Client(timeout=provider_timeout)
         try:
             resp = client.post(endpoint, json=payload, headers=headers)
             resp.raise_for_status()
@@ -508,7 +539,7 @@ class Translator(threading.Thread):
             return self._call_api_legacy(text)
 
         # Filter out cooling providers
-        active = [p for p in providers if not self._is_cooling(p["label"])]
+        active = [p for p in providers if not self._is_cooling(p.get("label", "unknown"))]
         if not active:
             log = get_logger()
             if log:
@@ -519,7 +550,7 @@ class Translator(threading.Thread):
         if skipped > 0:
             log = get_logger()
             if log:
-                cooling_names = [p["label"] for p in providers if p not in active]
+                cooling_names = [p.get("label", "unknown") for p in providers if p not in active]
                 log.warn("LLM", f"跳过冷却中的 Provider: {', '.join(cooling_names)}")
 
         # Sequential mode: try providers one by one with 5s timeout each
@@ -532,7 +563,7 @@ class Translator(threading.Thread):
         errors = []
         with ThreadPoolExecutor(max_workers=min(len(active), 4)) as executor:
             futures = {
-                executor.submit(self._call_provider, p, text): p["label"]
+                executor.submit(self._call_provider, p, text): p.get("label", "unknown")
                 for p in active
             }
             for future in as_completed(futures):
@@ -557,12 +588,12 @@ class Translator(threading.Thread):
         for p in retry_list:
             try:
                 result = self._call_provider(p, text)
-                self._note_provider_result(p["label"], True)
+                self._note_provider_result(p.get("label", "unknown"), True)
                 if log:
                     log.info("LLM", f"重试成功: {p['label']}")
                 return result
             except Exception:
-                self._note_provider_result(p["label"], False)
+                self._note_provider_result(p.get("label", "unknown"), False)
                 time.sleep(0.18)
 
         raise Exception(" | ".join(errors) if errors else "所有 Provider 翻译失败")
@@ -573,7 +604,7 @@ class Translator(threading.Thread):
         errors = []
 
         for p in active:
-            label = p["label"]
+            label = p.get("label", "unknown")
             if log:
                 log.info("LLM", f"顺序尝试: {label}")
             try:
@@ -607,12 +638,12 @@ class Translator(threading.Thread):
         for p in all_providers:
             try:
                 result = self._call_provider(p, text, timeout=8.0)
-                self._note_provider_result(p["label"], True)
+                self._note_provider_result(p.get("label", "unknown"), True)
                 if log:
                     log.info("LLM", f"重试成功: {p['label']}")
                 return result
             except Exception:
-                self._note_provider_result(p["label"], False)
+                self._note_provider_result(p.get("label", "unknown"), False)
                 time.sleep(0.18)
 
         raise Exception(" | ".join(errors) if errors else "所有 Provider 翻译失败")
@@ -793,7 +824,7 @@ def translate_for_send(cfg: AppConfig, text: str, target_lang: str = "en") -> st
                 data = resp.json()
                 return data["choices"][0]["message"]["content"].strip()
 
-            futures = {executor.submit(_call_one, p): p["label"] for p in providers}
+            futures = {executor.submit(_call_one, p): p.get("label", "unknown") for p in providers}
             for future in as_completed(futures):
                 try:
                     llm_result = future.result()
