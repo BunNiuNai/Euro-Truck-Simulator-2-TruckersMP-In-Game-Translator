@@ -227,15 +227,26 @@ class App:
         self.overlay._apply_mode()
 
     def _open_settings(self):
+        from settings_ui import SettingsWindow
+
+        old_cfg = self.cfg
         old_hotkey = self.cfg.send_hotkey
-        dialog = SettingsDialog(self.overlay.root, self.cfg, self.overlay)
-        self.overlay.root.wait_window(dialog.top)
-        if dialog.result:
-            self.cfg = dialog.result
+
+        def on_saved(new_cfg):
+            self.cfg = new_cfg
+            if hasattr(self, 'overlay') and self.overlay:
+                self.overlay.cfg = new_cfg
+                self.overlay.set_opacity(new_cfg.window_opacity)
+                self.overlay.set_font_size(new_cfg.font_size)
+                self.overlay._apply_mode()
+
+        win = SettingsWindow(self.overlay.root, self.cfg, self.overlay,
+                             on_save_callback=on_saved)
+        if win.result:
+            self.cfg = win.result
             self.overlay.cfg = self.cfg
             self.overlay.set_opacity(self.cfg.window_opacity)
             self.overlay.set_font_size(self.cfg.font_size)
-            save_config(self.cfg)
             self.overlay._apply_mode()
             if self.cfg.send_hotkey != old_hotkey:
                 self.overlay.update_send_hotkey(self.cfg.send_hotkey)
@@ -303,6 +314,10 @@ class HotkeyCapture(tk.Frame):
         self._label.config(text=self._fmt(hotkey_str), bg="#2d2d30", fg="#cccccc")
 
 
+# ═══════════════════════════════════════════════════════════════
+# DEPRECATED: SettingsDialog is replaced by settings_ui.SettingsWindow.
+# Kept for reference until v1.8.0 release confirms new UI stability.
+# ═══════════════════════════════════════════════════════════════
 class SettingsDialog:
     """Configuration dialog — VS Code dark theme."""
 
