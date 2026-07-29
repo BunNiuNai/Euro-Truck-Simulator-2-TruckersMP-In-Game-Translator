@@ -92,6 +92,92 @@ def detect_language(text: str) -> str:
     return "未知"
 
 
+# ── Target-language script patterns for mixed-text splitting ──
+# Maps config target_language codes to regex patterns matching that script.
+_TARGET_SCRIPT_PATTERNS: dict[str, re.Pattern] = {
+    "zh-CN": re.compile(r"[一-鿿　-〿＀-￯]"),  # CJK + Chinese punct
+    "zh-TW": re.compile(r"[一-鿿　-〿＀-￯]"),
+    "ja": re.compile(r"[぀-ゟ゠-ヿ一-鿿]"),     # Hiragana + Katakana + Kanji
+    "ko": re.compile(r"[가-힯ᄀ-ᇿ㄰-㆏]"),     # Hangul
+    "ru": re.compile(r"[Ѐ-ӿ]"),                                # Cyrillic
+    "th": re.compile(r"[฀-๿]"),                                # Thai
+    "ar": re.compile(r"[؀-ۿݐ-ݿ]"),                   # Arabic
+}
+# For script-based languages not in the map, fallback to treating Latin-script
+# (ASCII + Latin-extended) as "foreign" and everything else as "target".
+_LATIN_SCRIPT_RE = re.compile(r"[a-zA-ZÀ-ɏḀ-ỿ]")
+
+
+def _get_target_script_pattern(target_lang: str) -> re.Pattern | None:
+    """Return the regex matching the script of target_lang, or None."""
+    lang = target_lang.split("-")[0].lower()
+    return _TARGET_SCRIPT_PATTERNS.get(target_lang) or _TARGET_SCRIPT_PATTERNS.get(lang)
+
+
+def split_mixed_text(text: str, target_lang: str) -> list[tuple[str, bool]]:
+    """Split text into (segment, is_target_lang) pairs.
+
+    Walks the text character by character, grouping contiguous characters
+    that are either in the target language script or not. Punctuation/whitespace
+    is absorbed into the preceding segment.
+
+    Returns [] for empty/whitespace-only text.
+    """
+    if not text or not text.strip():
+        return []
+
+    target_re = _get_target_script_pattern(target_lang)
+    if target_re is None:
+        # No specific script pattern — treat all text as foreign
+        return [(text, False)]
+
+    result: list[tuple[str, bool]] = []
+    current_chars: list[str] = []
+    current_is_target: bool | None = None
+
+    for ch in text:
+        is_target = bool(target_re.match(ch))
+
+        if current_is_target is None:
+            current_is_target = is_target
+            current_chars.append(ch)
+        elif is_target == current_is_target:
+            current_chars.append(ch)
+        else:
+            # Script boundary — flush current segment
+            segment = "".join(current_chars).strip()
+            if segment:
+                result.append((segment, current_is_target))
+            current_chars = [ch]
+            current_is_target = is_target
+
+    # Flush last segment
+    if current_chars:
+        segment = "".join(current_chars).strip()
+        if segment:
+            result.append((segment, current_is_target))
+
+    return result
+
+
+def reassemble_mixed(
+    segments: list[tuple[str, bool]],
+    translations: dict[str, str],
+) -> str:
+    """Reassemble mixed-language segments after translating foreign parts.
+
+    Target-language segments are kept as-is. Foreign segments are replaced
+    with their translations (falling back to original if not translated).
+    """
+    parts: list[str] = []
+    for text, is_target in segments:
+        if is_target:
+            parts.append(text)
+        else:
+            parts.append(translations.get(text, text))
+    return "".join(parts)
+
+
 CACHE_SIZE = 1000
 BATCH_WINDOW = 0.3  # seconds to wait for more messages before sending batch
 BATCH_SEPARATOR = "\n---\n"
@@ -259,11 +345,53 @@ class Translator(threading.Thread):
         else:
             self._flush_llm(batch)
 
+    def _translate_with_mixed_lang(self, text: str, target_lang: str) -> str:
+        """Translate text, preserving segments already in the target language.
+
+        If the text contains mixed scripts (target language + foreign), it is
+        split into segments. Target-language segments are kept as-is; only
+        foreign segments are sent to the LLM API. Pure foreign or pure target
+        texts are handled normally (pure target is returned unchanged).
+        """
+        if not text or not text.strip():
+            return text
+
+        segments = split_mixed_text(text, target_lang)
+        if not segments:
+            return text
+
+        # Count foreign segments
+        foreign_segments = [(i, s) for i, (s, is_target) in enumerate(segments) if not is_target]
+        target_segments = [s for s, is_target in segments if is_target]
+
+        if not foreign_segments:
+            # All text is already in the target language — nothing to translate
+            return text
+
+        if not target_segments:
+            # Pure foreign — translate normally
+            return self._call_api(text)
+
+        # Mixed: translate each foreign segment individually
+        translations: dict[str, str] = {}
+        for _, fseg in foreign_segments:
+            stripped = fseg.strip()
+            if stripped:
+                try:
+                    translations[fseg] = self._call_api(stripped)
+                except Exception:
+                    translations[fseg] = fseg  # fallback to original
+            else:
+                translations[fseg] = fseg
+
+        return reassemble_mixed(segments, translations)
+
     def _flush_llm(self, batch):
         try:
             if len(batch) == 1:
                 text = batch[0].text
-                translated = self._call_api(text)
+                target_lang = self.cfg.target_language
+                translated = self._translate_with_mixed_lang(text, target_lang)
                 self._cache.put(text, translated)
                 detected = detect_language(text)
                 self.out_queue.put(DisplayMessage(
