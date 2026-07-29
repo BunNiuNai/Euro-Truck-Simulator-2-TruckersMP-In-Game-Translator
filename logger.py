@@ -47,6 +47,27 @@ class Logger:
             f"translator_{datetime.now().strftime('%Y-%m-%d')}.log",
         )
 
+    def _close_file(self) -> None:
+        """Close the persistent file handle if open (thread-safe)."""
+        if self._file is not None:
+            try:
+                self._file.close()
+            except OSError:
+                pass
+            self._file = None
+
+    def _ensure_file_open(self) -> None:
+        """Re-open the current log file if needed (called after delete)."""
+        today = datetime.now().strftime('%Y-%m-%d')
+        if self._file is None or today != self._current_date:
+            if self._file is not None:
+                self._close_file()
+            self._current_date = today
+            try:
+                self._file = open(self._current_log_path(), "a", encoding="utf-8")
+            except OSError:
+                pass
+
     def _cleanup_old_logs(self) -> None:
         """Remove log files older than 7 days (weekly cleanup)."""
         try:
@@ -62,21 +83,60 @@ class Logger:
         except OSError:
             pass
 
-    def delete_all_logs(self) -> int:
-        """Delete all log files in the log directory. Returns count of deleted files."""
+    def _delete_log_files(self, prefix: str) -> tuple[int, list[str]]:
+        """Delete log files matching a prefix. Returns (deleted_count, [errors]).
+        Caller MUST hold self._lock before calling if prefix == "translator_".
+        Closes/opens the translator file handle for translator_ prefix.
+        """
+        errors: list[str] = []
         deleted = 0
+
+        # Close the translator file handle before deleting translator files
+        if prefix == "translator_":
+            self._close_file()
+
         try:
             for f in os.listdir(self._log_dir):
-                if (f.startswith("translator_") or f.startswith("messages_")) and f.endswith(".log"):
+                if f.startswith(prefix) and f.endswith(".log"):
                     fpath = os.path.join(self._log_dir, f)
                     try:
                         os.remove(fpath)
                         deleted += 1
-                    except OSError:
-                        pass
-        except OSError:
-            pass
+                    except OSError as e:
+                        errors.append(f"{f}: {e}")
+        except OSError as e:
+            errors.append(str(e))
+
+        # Re-open translator file after deletion — skip: lazily reopened on next _log() call
+        return deleted, errors
+
+    def delete_translator_logs(self) -> int:
+        """Delete all translator log files. Returns count of deleted files.
+        Closes the current file handle first so Windows can delete it.
+        Clears the in-memory buffer so UI reflects the deletion.
+        """
+        with self._lock:
+            deleted, _errors = self._delete_log_files("translator_")
+            self._buffer.clear()
         return deleted
+
+    def delete_message_logs(self) -> int:
+        """Delete all message log files. Returns count of deleted files.
+        Message log files are not held open (written with 'with' block),
+        so no file handle management is needed.
+        """
+        deleted, _errors = self._delete_log_files("messages_")
+        return deleted
+
+    def delete_all_logs(self) -> int:
+        """Delete all log files (both translator and message). Returns total count.
+        The in-memory buffer is cleared.
+        """
+        with self._lock:
+            t_deleted, _t_errs = self._delete_log_files("translator_")
+            m_deleted, _m_errs = self._delete_log_files("messages_")
+            self._buffer.clear()
+        return t_deleted + m_deleted
 
     def _rotate_if_needed(self) -> None:
         """If current log exceeds max_size, rename it with a sequence number."""
@@ -106,14 +166,10 @@ class Logger:
 
             self._rotate_if_needed()
             try:
-                today = datetime.now().strftime('%Y-%m-%d')
-                if self._file is None or today != self._current_date:
-                    if self._file is not None:
-                        self._file.close()
-                    self._current_date = today
-                    self._file = open(self._current_log_path(), "a", encoding="utf-8")
-                self._file.write(line + "\n")
-                self._file.flush()
+                self._ensure_file_open()
+                if self._file is not None:
+                    self._file.write(line + "\n")
+                    self._file.flush()
             except OSError:
                 pass
 
@@ -123,12 +179,7 @@ class Logger:
     def close(self) -> None:
         """Close the persistent file handle if open."""
         with self._lock:
-            if self._file is not None:
-                try:
-                    self._file.close()
-                except OSError:
-                    pass
-                self._file = None
+            self._close_file()
 
     def warn(self, tag: str, message: str) -> None:
         self._log(tag, "WARN", message)

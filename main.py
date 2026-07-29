@@ -1275,20 +1275,22 @@ class SettingsDialog:
                 os.startfile(log_dir)
 
     def _delete_translator_logs(self) -> None:
-        """Delete all log files and refresh translator logs tab."""
+        """Delete translator log files, show result, refresh UI."""
         log = get_logger()
         if log:
-            n = log.delete_all_logs()
+            n = log.delete_translator_logs()
             self._refresh_logs()
-            log.info("SYS", f"手动删除 {n} 个日志文件")
+            messagebox.showinfo("删除完成",
+                f"已删除 {n} 个翻译器日志文件", parent=self.top)
 
     def _delete_message_logs(self) -> None:
-        """Delete all log files and refresh message logs tab."""
+        """Delete message log files, show result, refresh UI."""
         log = get_logger()
         if log:
-            n = log.delete_all_logs()
+            n = log.delete_message_logs()
             self._refresh_messages()
-            log.info("SYS", f"手动删除 {n} 个日志文件")
+            messagebox.showinfo("删除完成",
+                f"已删除 {n} 个消息日志文件", parent=self.top)
 
     def _on_log_mousewheel(self, event) -> None:
         self.log_text.yview_scroll(int(-1 * (event.delta / 120)), "units")
