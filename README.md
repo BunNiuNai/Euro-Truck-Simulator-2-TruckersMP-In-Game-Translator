@@ -1,7 +1,7 @@
 # 🚛 ETS2 TruckersMP Chat Translator · 欧卡联机聊天翻译器
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-v1.5.2-3b82f6?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-v1.8.0-3b82f6?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-10b981?style=for-the-badge" alt="License">
   <img src="https://img.shields.io/badge/platform-Windows%2010%2F11-0078D6?style=for-the-badge&logo=windows" alt="Platform">
   <img src="https://img.shields.io/badge/python-3.10%2B-3776AB?style=for-the-badge&logo=python" alt="Python">
@@ -14,7 +14,7 @@
 </p>
 
 <p align="center">
-  <strong>🌍 实时多语言聊天翻译 · 悬浮窗口 · 一键发送 · exe 免安装</strong><br>
+  <strong>🌍 实时多语言聊天翻译 · 悬浮窗口 · 一键发送 · 20+ LLM 预设 · exe 免安装</strong><br>
   <sub>Real-time in-game chat translator for Euro Truck Simulator 2 / TruckersMP</sub>
 </p>
 
@@ -68,9 +68,12 @@
 | 🏷️ | 功能 | 说明 |
 |:---:|---|---|
 | 🏎️ | **多 Provider 并行竞速** | 配置多个大模型 API，同时发起请求，**谁快用谁** |
+| 📦 | **20+ Provider 预设** | 内置国内外主流 LLM 供应商模板，一键填入地址和模型 |
+| 📥 | **模型列表拉取** | 从 API 端点自动获取可用模型，无需手动查模型名 |
 | 🔄 | **Provider 熔断回退** | 连续失败 3 次自动冷却，成功恢复；全部失败串行重试 |
 | 📦 | **批量翻译** | 0.3 秒窗口收集多条消息，合并为一次 API 请求 |
 | 💾 | **LRU 缓存 1000 条** | 重复消息直接命中缓存，零延迟零消耗 |
+| 🌐 | **混合语言智能拆分** | 中文片段保留不译，只翻译非中文部分，适配游戏混合聊天 |
 | 🔀 | **三种翻译后端** | LLM / 百度翻译 / LLM+百度监督混合模式 |
 | 🛡️ | **百度翻译监督** | LLM 先翻译 → 百度对比纠错 → 不一致自动替换 |
 | 📊 | **同文本请求合并** | 相同原文并发到达时自动合并为一次 API 调用 |
@@ -111,7 +114,20 @@
 
 ## 🆕 近期更新
 
-<details open>
+### 🚀 v1.8.0 — Provider 预设系统 & 混合语言智能翻译
+
+- **📦 Provider 预设系统**：内置 20+ 国内外 LLM 供应商预设，点击即可自动填入 API 地址和推荐模型，只需填写 Key
+- **📥 模型列表拉取**：一键从 API 端点获取可用模型列表，不再需要手动查模型名
+- **🌐 混合语言智能翻译**：消息中夹杂中文的部分原样保留，只翻译非中文片段，解决 LLM 看到中文就跳过的问题
+- **🔍 连通性测试**：Provider 编辑区新增实时 API 延迟检测
+- **🛠️ 日志删除修复**：修复翻译器日志和消息日志无法通过系统按钮删除的问题
+- **7 个测试文件、72 个单元测试**覆盖核心模块
+
+### 📤 v1.6.0 / v1.7.0
+
+- 广告消息自动定时发送、Provider 权重配置、API 格式支持（OpenAI + Anthropic）
+
+<details>
 <summary><b>v1.5.x · v1.4.0 · v1.3.0 — 点击展开</b></summary>
 
 ### 🚀 v1.5.2 — 窗口渲染修复
@@ -205,6 +221,8 @@ python build_exe.py
 
 ### 🌐 Provider 配置（多 LLM 支持）
 
+> 💡 **v1.8.0 新增**：点击 **📦 预设** 按钮，从 20+ 内置供应商中一键选择，自动填入 API 地址和推荐模型，只需填写 API Key 即可。
+
 | ⚙️ 配置项 | 📝 说明 | 💡 示例 |
 |:---|:---|:---|
 | 🏷️ **Label** | Provider 名称 | `DeepSeek` |
@@ -213,7 +231,7 @@ python build_exe.py
 | 🤖 **Model** | 模型名称 | `deepseek-chat` |
 | ✅ **Enabled** | 启用/禁用此 Provider | ☑ |
 
-> ⚠️ Endpoint 必须是完整 URL，例如 `https://api.siliconflow.cn/v1/chat/completions`，只填 `https://api.siliconflow.cn/v1` 会导致连接失败。
+> ⚠️ Endpoint 必须是完整 URL。使用预设功能可避免手动填写地址。
 
 ### ⚙️ 其他配置
 
@@ -302,12 +320,15 @@ python build_exe.py
 ├── 🚀 main.py              # 入口、主控、设置对话框
 ├── ⚙️ config.py             # 配置模型、DPAPI 加密、JSON 读写
 ├── 📡 monitor.py           # TMP 聊天日志监控（增量轮询、正则解析）
-├── 🧠 translator.py        # 翻译引擎（多Provider并行、熔断、缓存、批量）
+├── 🧠 translator.py        # 翻译引擎（多Provider并行、熔断、缓存、批量、混合语言拆分）
 ├── 🪟 overlay.py           # 显示窗口（Tkinter + Win32 API、输入栏、热键）
 ├── ⌨️ hotkey_manager.py     # 系统热键管理（RegisterHotKey + 消息窗口）
 ├── 📨 input_sender.py      # 键盘模拟（SendInput API、剪贴板）
 ├── 📋 tray_icon.py         # 系统托盘（纯 ctypes + Win32 API）
 
+├── 🎨 settings_ui.py       # 设置 UI（Provider 预设选择、模型拉取、连通测试）
+├── 📦 provider_presets.py  # 内置 20+ LLM 供应商预设模板
+├── 📥 model_fetcher.py     # 模型列表拉取（/v1/models 端点探测）
 ├── 🏗️ build_exe.py          # PyInstaller 打包脚本
 ├── 📊 win32_constants.py   # Win32 常量/结构体共享模块
 ├── 💬 message_display.py   # 消息渲染引擎
@@ -316,7 +337,7 @@ python build_exe.py
 ├── 📄 requirements.txt     # Python 依赖（仅 httpx）
 ├── 🎨 icon.ico             # 程序图标
 └── 📦 dist/                # 构建输出
-    └── ETS2-TruckersMP翻译器-v1.5.2.exe
+    └── ETS2-TruckersMP翻译器-v1.8.0.exe
 ```
 
 ---
@@ -387,6 +408,24 @@ python build_exe.py
 <summary>🟢 <b>如何申请百度翻译 API？</b></summary>
 
 > 访问 [fanyi-api.baidu.com](https://fanyi-api.baidu.com/) 注册开发者 → 创建应用 → 获取 APP ID 和密钥 → 选择"标准版"免费使用。
+</details>
+
+<details>
+<summary>🆕 <b>如何使用预设功能快速添加 Provider？</b></summary>
+
+> 设置 → API 配置 → 点击 **📦 预设** 按钮 → 搜索/选择供应商 → 自动填入地址和模型 → 只需填写 API Key → 保存。支持 20+ 国内外主流 LLM 供应商。
+</details>
+
+<details>
+<summary>🆕 <b>为什么日志"删除"按钮点了没反应？</b></summary>
+
+> v1.8.0 已修复此问题。更新到最新版本后，点击删除按钮会弹窗提示删除结果。如仍遇到问题，请检查 `文档\ETS2 Translator\logs\` 文件夹权限。
+</details>
+
+<details>
+<summary>🆕 <b>聊天消息中夹杂中文和外语时，翻译不准怎么办？</b></summary>
+
+> v1.8.0 新增混合语言智能拆分：中文部分自动保留不动，只翻译非中文片段。例如 "你好 where are you" → "你好 你在哪里"。
 </details>
 
 
