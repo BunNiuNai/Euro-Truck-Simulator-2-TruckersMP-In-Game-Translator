@@ -227,26 +227,15 @@ class App:
         self.overlay._apply_mode()
 
     def _open_settings(self):
-        from settings_ui import SettingsWindow
-
-        old_cfg = self.cfg
         old_hotkey = self.cfg.send_hotkey
-
-        def on_saved(new_cfg):
-            self.cfg = new_cfg
-            if hasattr(self, 'overlay') and self.overlay:
-                self.overlay.cfg = new_cfg
-                self.overlay.set_opacity(new_cfg.window_opacity)
-                self.overlay.set_font_size(new_cfg.font_size)
-                self.overlay._apply_mode()
-
-        win = SettingsWindow(self.overlay.root, self.cfg, self.overlay,
-                             on_save_callback=on_saved)
-        if win.result:
-            self.cfg = win.result
+        dialog = SettingsDialog(self.overlay.root, self.cfg, self.overlay)
+        self.overlay.root.wait_window(dialog.top)
+        if dialog.result:
+            self.cfg = dialog.result
             self.overlay.cfg = self.cfg
             self.overlay.set_opacity(self.cfg.window_opacity)
             self.overlay.set_font_size(self.cfg.font_size)
+            save_config(self.cfg)
             self.overlay._apply_mode()
             if self.cfg.send_hotkey != old_hotkey:
                 self.overlay.update_send_hotkey(self.cfg.send_hotkey)
@@ -613,10 +602,11 @@ class SettingsDialog:
         self._provider_list_frame.pack(fill=tk.X)
         self._provider_list_frame.columnconfigure(0, weight=1)
 
-        # Add provider button
+        # Add provider buttons
         add_row = tk.Frame(inner, bg=self._PAGE_BG)
         add_row.pack(fill=tk.X, pady=(4, 12))
         self._pill_btn(add_row, "+ 添加 Provider", self._add_provider, accent=False).pack(side=tk.LEFT)
+        self._pill_btn(add_row, "📦 预设", self._add_provider_from_preset, accent=True).pack(side=tk.LEFT, padx=(8, 0))
 
         # Provider mode selection
         self._section_label(inner, "PROVIDER MODE  /  调用模式").pack(fill=tk.X, pady=(8, 8))
@@ -1423,6 +1413,17 @@ class SettingsDialog:
             "key_entry": key_entry,
             "model_entry": model_entry,
         })
+
+    def _add_provider_from_preset(self):
+        """Open preset selector and add a provider from a preset."""
+        from settings_ui import PresetSelectorDialog
+        dialog = PresetSelectorDialog(self.top)
+        if dialog.result is not None:
+            data = dialog.result.to_provider_dict()
+            self.cfg.llm_providers.append(data)
+            self._rebuild_provider_list()
+        elif dialog._custom_selected:
+            self._add_provider()
 
     def _add_provider(self):
         self.cfg.llm_providers.append({
