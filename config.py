@@ -188,11 +188,22 @@ DEFAULT_SYSTEM_PROMPT = get_receive_prompt()
 @dataclass
 class ProviderConfig:
     """A single LLM provider configuration."""
+    # ── Basic fields ──
+    id: str = ""             # unique identifier for preset matching
     label: str = ""
     endpoint: str = ""
     api_key: str = ""
     model: str = ""
     enabled: bool = True
+
+    # ── Extended fields ──
+    preset_id: str = ""      # source preset ID, empty = manual
+    icon: str = ""           # icon key for PROVIDER_ICONS
+    api_format: str = "openai"  # "openai" or "anthropic"
+    weight: int = 100        # priority (higher = tried first)
+    extra_headers: dict = field(default_factory=dict)
+    extra_body: dict = field(default_factory=dict)
+    timeout: int = 8         # per-provider timeout in seconds
 
 
 @dataclass
@@ -231,6 +242,57 @@ class AppConfig:
     llm_providers: list[dict] = field(default_factory=list)  # NEW: list of provider dicts
 
 
+def _migrate_config_v2(data: dict) -> dict:
+    """Migrate config from v1 (flat providers) to v2 (rich ProviderConfig).
+    Returns the migrated data dict. Original file is backed up as .v1.bak.
+    """
+    if data.get("version", 1) >= 2:
+        return data
+
+    # Backup old config
+    if os.path.exists(CONFIG_PATH):
+        try:
+            import shutil
+            shutil.copy2(CONFIG_PATH, CONFIG_PATH + ".v1.bak")
+        except OSError:
+            pass
+
+    old_providers = data.get("llm_providers", [])
+    if not old_providers and data.get("api_endpoint"):
+        old_providers = [{
+            "label": "LLM Provider",
+            "endpoint": data.get("api_endpoint", ""),
+            "api_key": data.get("api_key", ""),
+            "model": data.get("api_model", ""),
+            "enabled": True,
+        }]
+
+    from provider_presets import match_preset_from_endpoint
+    new_providers = []
+    for i, p in enumerate(old_providers):
+        endpoint = p.get("endpoint", "")
+        preset_id = match_preset_from_endpoint(endpoint)
+        new_providers.append({
+            "id": preset_id or f"manual_{i}",
+            "label": p.get("label", f"Provider {i+1}"),
+            "endpoint": endpoint,
+            "api_key": p.get("api_key", ""),
+            "model": p.get("model", ""),
+            "enabled": p.get("enabled", True),
+            "preset_id": preset_id,
+            "icon": preset_id if preset_id else "",
+            "api_format": "openai",
+            "weight": 100 - i,
+            "extra_headers": {},
+            "extra_body": {},
+            "timeout": 8,
+        })
+
+    data["version"] = 2
+    data["llm_providers"] = new_providers
+    return data
+
+
 def ensure_config_dir():
     os.makedirs(CONFIG_DIR, exist_ok=True)
 
@@ -252,6 +314,8 @@ def load_config():
         return cfg
 
     defaults = asdict(AppConfig())
+    # Run v1→v2 migration if needed
+    data = _migrate_config_v2(data)
     # Merge loaded data over defaults (allow partial configs)
     merged = {**defaults, **data}
     # Decrypt sensitive fields
