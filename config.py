@@ -12,7 +12,7 @@ import winreg
 from ctypes import wintypes
 from dataclasses import dataclass, asdict, field
 
-VERSION = "v1.8.0"
+VERSION = "v2.0.0"
 
 # ── Windows DPAPI for encrypting sensitive config fields ──
 
@@ -237,6 +237,8 @@ class AppConfig:
     debug_log: bool = False  # enable debug logging to %TEMP%
     provider_mode: str = "race"  # "race" = parallel race, "sequential" = sequential fallback
     show_language_label: bool = True  # show [语言] label before each translated message
+    show_original_text: bool = True  # show original text in smaller gray below translation
+    accent_color: str = "#3b82f6"  # blue accent color for highlights, stats numbers, borders
     ad_messages: list[str] = field(default_factory=lambda: [""] * 5)  # ad sender messages
     ad_countdown: str = ""  # ad sender countdown (minutes)
     llm_providers: list[dict] = field(default_factory=list)  # NEW: list of provider dicts

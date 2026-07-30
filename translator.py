@@ -298,6 +298,7 @@ class Translator(threading.Thread):
                     original_text=msg.text,
                     translated_text=msg.text,
                     is_self=True,
+                    timestamp=msg.timestamp,
                 ))
                 continue
 
@@ -310,6 +311,8 @@ class Translator(threading.Thread):
                     original_text=msg.text,
                     translated_text=cached,
                     is_self=msg.is_self,
+                    timestamp=msg.timestamp,
+                    is_system=msg.is_system,
                 ))
                 continue
 
@@ -399,6 +402,8 @@ class Translator(threading.Thread):
                     original_text=text,
                     translated_text=translated,
                     detected_language=detected,
+                    timestamp=batch[0].timestamp,
+                    is_system=batch[0].is_system,
                 ))
             else:
                 combined = BATCH_SEPARATOR.join(m.text for m in batch)
@@ -413,6 +418,8 @@ class Translator(threading.Thread):
                         original_text=msg.text,
                         translated_text=trans,
                         detected_language=detected,
+                        timestamp=msg.timestamp,
+                        is_system=msg.is_system,
                     ))
         except Exception as e:
             err_msg = self._format_error(e)
@@ -426,6 +433,8 @@ class Translator(threading.Thread):
                     original_text=msg.text,
                     translated_text=err_msg,
                     detected_language=detected,
+                    timestamp=msg.timestamp,
+                    is_system=msg.is_system,
                 ))
 
     def _flush_baidu(self, batch):
@@ -441,6 +450,8 @@ class Translator(threading.Thread):
                     original_text=msg.text,
                     translated_text=translated,
                     detected_language=detected,
+                    timestamp=msg.timestamp,
+                    is_system=msg.is_system,
                 ))
             except Exception as e:
                 log = get_logger()
@@ -452,6 +463,8 @@ class Translator(threading.Thread):
                     original_text=msg.text,
                     translated_text=f"[百度翻译失败] {e}",
                     detected_language=detected,
+                    timestamp=msg.timestamp,
+                    is_system=msg.is_system,
                 ))
 
     def _flush_hybrid(self, batch):
@@ -477,6 +490,8 @@ class Translator(threading.Thread):
                     original_text=msg.text,
                     translated_text=err_msg,
                     detected_language=detected,
+                    timestamp=msg.timestamp,
+                    is_system=msg.is_system,
                 ))
             return
 
@@ -513,6 +528,8 @@ class Translator(threading.Thread):
                     translated_text=baidu_trans,
                     baidu_fixed=True,
                     detected_language=detected,
+                    timestamp=msg.timestamp,
+                    is_system=msg.is_system,
                 ))
             else:
                 self._cache.put(msg.text, llm_trans)
@@ -521,6 +538,8 @@ class Translator(threading.Thread):
                     original_text=msg.text,
                     translated_text=llm_trans,
                     detected_language=detected,
+                    timestamp=msg.timestamp,
+                    is_system=msg.is_system,
                 ))
 
         if baidu_override_count > 0:

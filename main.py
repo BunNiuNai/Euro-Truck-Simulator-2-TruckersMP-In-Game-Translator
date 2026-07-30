@@ -57,15 +57,17 @@ class App:
 
         # Shared ref for auto-detected player name
         self._self_name_ref = {"name": self.cfg.player_name}
+        # Shared ref for auto-detected server name
+        self._server_name_ref = {"name": ""}
 
         # Start background threads
-        self.monitor = ChatMonitor(self.raw_queue, self._self_name_ref)
+        self.monitor = ChatMonitor(self.raw_queue, self._self_name_ref, self._server_name_ref)
         self.translator = Translator(self.cfg, self.raw_queue, self.display_queue)
         self.monitor.start()
         self.translator.start()
 
         # Create overlay window
-        self.overlay = OverlayWindow(self.cfg, self.display_queue, self.translator.stats)
+        self.overlay = OverlayWindow(self.cfg, self.display_queue, self.translator.stats, self._server_name_ref)
         self.overlay._settings_cb = self._open_settings
         self.overlay._switch_mode_cb = self._switch_mode
         self.overlay._exit_cb = self._shutdown
@@ -544,6 +546,14 @@ class SettingsDialog:
         _link(kook_row, "Kook: https://kook.vip/WJZ5Sj",
               "https://kook.vip/WJZ5Sj").pack(side=tk.LEFT)
         tk.Label(kook_row, text="（链接不跳转请搜索频道：39037626）",
+                 bg=page_bg, fg=self._TEXT_SEC,
+                 font=("Microsoft YaHei", 9)).pack(side=tk.LEFT, padx=(4, 0))
+
+        sf_row = tk.Frame(credits, bg=page_bg)
+        sf_row.pack(fill=tk.X, pady=(0, 2))
+        _link(sf_row, "硅基流动邀请链接: https://cloud.siliconflow.cn/i/OQZrwou4",
+              "https://cloud.siliconflow.cn/i/OQZrwou4").pack(side=tk.LEFT)
+        tk.Label(sf_row, text="邀请码: OQZrwou4",
                  bg=page_bg, fg=self._TEXT_SEC,
                  font=("Microsoft YaHei", 9)).pack(side=tk.LEFT, padx=(4, 0))
 

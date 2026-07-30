@@ -44,6 +44,9 @@ SYSTEM_LINE_RE = re.compile(
     r"(?P<text>.+)$"
 )
 
+# Server connection detection, e.g. "Connecting to Simulation 1 server..."
+SERVER_CONNECT_RE = re.compile(r"Connecting to (.+?) server\.\.\.")
+
 
 @dataclass
 class ChatMessage:
@@ -51,6 +54,7 @@ class ChatMessage:
     player_name: str
     text: str
     is_self: bool = False
+    is_system: bool = False  # True for system/channel messages without a player
 
 
 def find_latest_log():
@@ -79,13 +83,14 @@ def find_latest_log():
 
 
 def parse_line(line: str, self_name: str | None = None) -> ChatMessage | None:
-    """Parse a chat log line into a ChatMessage, or None if not a player chat line.
+    """Parse a chat log line into a ChatMessage, or None if not a chat line.
 
     Matches: [Channel] [HH:MM:SS] PlayerName (ServerLetter ID): Message
-    System messages (no player name / TMP ID) are skipped.
+    System messages (no player name / TMP ID) get is_system=True.
     When self_name is provided, messages from that player get is_self=True.
     """
-    m = CHAT_LINE_RE.match(line.strip())
+    stripped = line.strip()
+    m = CHAT_LINE_RE.match(stripped)
     if m:
         player = m.group("player")
         is_self = self_name is not None and player == self_name
@@ -96,15 +101,25 @@ def parse_line(line: str, self_name: str | None = None) -> ChatMessage | None:
             is_self=is_self,
         )
     # Fallback: system message without player/ID
-    sm = SYSTEM_LINE_RE.match(line.strip())
+    sm = SYSTEM_LINE_RE.match(stripped)
     if sm:
         return ChatMessage(
             timestamp=sm.group("time"),
             player_name=f"[{sm.group('channel')}]",
             text=sm.group("text"),
-            is_self=False,
+            is_system=True,
         )
     return None
+
+
+def detect_server_name(text: str) -> str | None:
+    """Extract server name from a 'Connecting to X server...' message.
+    Returns the server name or None.
+    Examples: 'Connecting to Simulation 1 server...' → 'Simulation 1'
+              'Connecting to ProMods server...'     → 'ProMods'
+    """
+    m = SERVER_CONNECT_RE.search(text)
+    return m.group(1).strip() if m else None
 
 
 def log_dir_status():
@@ -124,10 +139,11 @@ def log_dir_status():
 class ChatMonitor(threading.Thread):
     """Background thread that tails the TruckersMP chat log."""
 
-    def __init__(self, message_queue: Queue, self_name_ref: dict):
+    def __init__(self, message_queue: Queue, self_name_ref: dict, server_name_ref: dict | None = None):
         super().__init__(daemon=True)
         self.queue = message_queue
         self._self_name_ref = self_name_ref  # mutable ref: {"name": str}
+        self._server_name_ref = server_name_ref or {"name": ""}  # mutable ref: {"name": str}
         self._stop_event = threading.Event()
         self._log_path = None
         self._last_size = 0
@@ -200,6 +216,16 @@ class ChatMonitor(threading.Thread):
                 msg = parse_line(line, self_name)
                 if msg is None:
                     continue
+                # Detect server name change from connection events
+                if msg.is_system:
+                    server = detect_server_name(msg.text)
+                    if server:
+                        old = self._server_name_ref.get("name", "")
+                        self._server_name_ref["name"] = server
+                        if server != old:
+                            log = get_logger()
+                            if log:
+                                log.info("TMP", f"检测到服务器切换: {old or '(无)'} → {server}")
                 # Deduplicate by (player, text, timestamp) hash
                 key = (msg.player_name, msg.text, msg.timestamp)
                 if key in self._seen:
