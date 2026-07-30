@@ -1,7 +1,7 @@
 # 🚛 ETS2 TruckersMP Chat Translator · 欧卡联机聊天翻译器
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-v1.8.0-3b82f6?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-v2.0.0-4494FC?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-10b981?style=for-the-badge" alt="License">
   <img src="https://img.shields.io/badge/platform-Windows%2010%2F11-0078D6?style=for-the-badge&logo=windows" alt="Platform">
   <img src="https://img.shields.io/badge/python-3.10%2B-3776AB?style=for-the-badge&logo=python" alt="Python">
@@ -14,7 +14,7 @@
 </p>
 
 <p align="center">
-  <strong>🌍 实时多语言聊天翻译 · 悬浮窗口 · 一键发送 · 20+ LLM 预设 · exe 免安装</strong><br>
+  <strong>🌍 实时多语言聊天翻译 · 毛玻璃悬浮窗 · 一键发送 · 20+ LLM 预设 · exe 免安装</strong><br>
   <sub>Real-time in-game chat translator for Euro Truck Simulator 2 / TruckersMP</sub>
 </p>
 
@@ -30,8 +30,10 @@
 
 ---
 
-> 🚛 在 ETS2 TruckersMP 联机中，自动将各国语言聊天实时翻译为简体中文，以半透明悬浮窗显示。
+> 🚛 在 ETS2 TruckersMP 联机中，自动将各国语言聊天实时翻译为简体中文，以现代毛玻璃悬浮窗显示。
 > 支持中文打字 → 自动翻译为英文 → 一键发送到游戏聊天。**完全免费 · 开源 · 无需安装 Python**
+> 
+> 🎨 **v2.0.0 全新设计**: Win11 Mica / Win10 Acrylic 毛玻璃效果 · 服务器自动识别 · 三层蓝色配色体系
 
 ---
 
@@ -83,13 +85,15 @@
 
 | 🏷️ | 功能 | 说明 |
 |:---:|---|---|
-| 🪟 | **双窗口模式** | 标准窗口 / 无边框悬浮窗（支持鼠标穿透 + 边缘拖拽缩放） |
-| 🎨 | **VS Code 深灰主题** | 精致的深色设置界面，与悬浮窗风格统一 |
+| 🪟 | **毛玻璃悬浮窗** | Win11 Mica / Win10 Acrylic 亚克力模糊效果，纯黑透明底色 + 1px 蓝色描边 |
+| 🎨 | **三层蓝色配色** | #4494FC 主色调 / #60A8FF 描边线 / #70B8FF 高亮文字，冷色调科技风格 |
+| 📐 | **四段式纵向布局** | 蓝色 accent 线 → 标题栏（版本+服务器）→ 消息区 → 输入框 → 统计栏 |
 | ⌨️ | **系统级全局热键** | RegisterHotKey 系统热键，不会被游戏拦截 |
 | 📋 | **系统托盘图标** | 右键托盘菜单：显示/隐藏、切换模式、鼠标穿透、设置、退出 |
-| 🕐 | **北京时间显示** | 悬浮窗底部实时显示北京时间 |
-| 🪟 | **窗口圆角** | Win11 原生圆角 + Win10 SetWindowRgn 兼容 |
-| 📍 | **窗口位置记忆** | 自动保存和恢复悬浮窗和设置窗口位置与大小 |
+| 🕐 | **北京时间显示** | 标题栏右侧实时显示北京时间 |
+| 🏷️ | **服务器自动识别** | 自动解析聊天日志中的 'Connecting to X server...' 并更新标题栏 |
+| ⏱️ | **消息时间戳** | 每条消息右侧对齐显示 HH:MM:SS 时间 |
+| 📝 | **输入框常驻** | 消息区与统计栏之间直接显示，随时输入 |
 
 ### 📋 日志与诊断
 
@@ -113,6 +117,17 @@
 ---
 
 ## 🆕 近期更新
+
+### 🎨 v2.0.0 — 现代毛玻璃 UI 全面重构
+
+- **🪟 全新毛玻璃悬浮窗** — Win11 Mica / Win10 Acrylic 自动适配，纯黑无色透明背景 + 1px 蓝色描边
+- **🎨 三层蓝色配色** — #4494FC 主色调 / #60A8FF 描边线 / #70B8FF 高亮文字
+- **📐 四段式纵向布局** — 蓝色 accent 线 → 标题栏 → 消息区 → 输入框 → 统计栏
+- **🏷️ 服务器自动识别** — 标题栏实时显示当前连接的服务器名称
+- **⏱️ 消息时间戳** — 每条消息右侧对齐显示 HH:MM:SS
+- **📝 输入框常驻** — 消息区下方直接输入，无需按热键呼出
+- **🔧 系统消息翻译修复** — TMP 系统通知正确翻译为中文
+- **9 个文件、72 个单元测试**覆盖核心模块
 
 ### 🚀 v1.8.0 — Provider 预设系统 & 混合语言智能翻译
 
@@ -319,9 +334,10 @@ python build_exe.py
 📁 ets2-translator/
 ├── 🚀 main.py              # 入口、主控、设置对话框
 ├── ⚙️ config.py             # 配置模型、DPAPI 加密、JSON 读写
-├── 📡 monitor.py           # TMP 聊天日志监控（增量轮询、正则解析）
+├── 📡 monitor.py           # TMP 聊天日志监控（增量轮询、正则解析、服务器识别）
 ├── 🧠 translator.py        # 翻译引擎（多Provider并行、熔断、缓存、批量、混合语言拆分）
-├── 🪟 overlay.py           # 显示窗口（Tkinter + Win32 API、输入栏、热键）
+├── 🪟 overlay.py           # 显示窗口（毛玻璃悬浮窗、grid 布局、Win32 API、输入栏、热键）
+├── 🪟 acrylic_helper.py    # Win32 亚克力/云母毛玻璃效果（Win11 Mica + Win10 Acrylic）
 ├── ⌨️ hotkey_manager.py     # 系统热键管理（RegisterHotKey + 消息窗口）
 ├── 📨 input_sender.py      # 键盘模拟（SendInput API、剪贴板）
 ├── 📋 tray_icon.py         # 系统托盘（纯 ctypes + Win32 API）
@@ -337,7 +353,7 @@ python build_exe.py
 ├── 📄 requirements.txt     # Python 依赖（仅 httpx）
 ├── 🎨 icon.ico             # 程序图标
 └── 📦 dist/                # 构建输出
-    └── ETS2-TruckersMP翻译器-v1.8.0.exe
+    └── ETS2-TruckersMP翻译器-v2.0.0.exe
 ```
 
 ---
