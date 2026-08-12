@@ -62,7 +62,7 @@ PROVIDER_ICONS: dict[str, str] = {
     "zhipu": "🧠",
     "kimi": "🌟",
     "doubao": "🫘",
-    "baidu": "🔍",
+    "baidu": "🌐",
     "xunfei": "🎤",
     "hunyuan": "💬",
     "stepfun": "🚀",
@@ -274,6 +274,25 @@ PRESETS: list[ProviderPreset] = [
         default_model="", models_url="/v1/models",
         icon="vllm", icon_color="#00BFA5",
         category="local", description="高性能本地推理引擎",
+    ),
+
+    # ── 百度翻译 ──
+    ProviderPreset(
+        id="baidu",
+        name="百度翻译",
+        website_url="https://fanyi-api.baidu.com/",
+        api_key_url="https://fanyi-api.baidu.com/api/trans/product/desktop",
+        endpoint="https://fanyi-api.baidu.com/api/trans/vip/translate",
+        api_format="baidu",
+        default_model="通用翻译",
+        models_url="",
+        icon="baidu",
+        icon_color="#3385FF",
+        category="cn_cloud",
+        template_headers={},
+        template_body={},
+        description="百度翻译 API，标准版每月 500 万字符免费",
+        recommended=False,
     ),
 ]
 
