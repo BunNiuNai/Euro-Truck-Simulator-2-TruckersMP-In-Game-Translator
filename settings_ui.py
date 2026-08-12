@@ -19,6 +19,14 @@ from provider_presets import (
 from model_fetcher import fetch_models, test_connectivity
 
 
+def _safe_unbind(widget, sequence: str) -> None:
+    """Unbind a sequence from a widget, ignoring errors if the widget was destroyed."""
+    try:
+        widget.unbind(sequence)
+    except tk.TclError:
+        pass  # widget already destroyed
+
+
 # ── VS Code dark theme colors ──
 class Theme:
     PAGE_BG = "#1e1e1e"
@@ -309,7 +317,7 @@ class PresetSelectorDialog:
             self._canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
         self._canvas.bind("<MouseWheel>", _on_mousewheel)
         self.top.bind("<Destroy>",
-            lambda e: self._canvas.unbind("<MouseWheel>"))
+            lambda e: _safe_unbind(self._canvas, "<MouseWheel>"))
 
         # ── Build preset cards by category ──
         self._preset_cards: list[tuple[tk.Frame, ProviderPreset]] = []
@@ -498,7 +506,7 @@ class ProviderListPanel(tk.Frame):
         self._canvas.bind("<Enter>",
             lambda e: self._canvas.bind("<MouseWheel>", _on_mousewheel))
         self._canvas.bind("<Leave>",
-            lambda e: self._canvas.unbind("<MouseWheel>"))
+            lambda e: _safe_unbind(self._canvas, "<MouseWheel>"))
 
         # Add button
         add_btn = tk.Label(self, text="+ 添加 Provider", bg=Theme.ACCENT,

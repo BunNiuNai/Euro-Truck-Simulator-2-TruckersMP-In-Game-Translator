@@ -1276,7 +1276,7 @@ class SettingsDialog:
                          font=("Microsoft YaHei", 9), padx=4, cursor="hand2")
             lb.pack(side=tk.LEFT)
             def make_handler(c=cmd_factory, i=idx):
-                return lambda e: c(i)()
+                return lambda e: c(i)
             lb.bind("<Button-1>", make_handler())
             lb.bind("<Enter>", lambda e, l=lb: l.configure(fg=self._ACCENT))
             lb.bind("<Leave>", lambda e, l=lb: l.configure(fg=self._TEXT_SEC))
