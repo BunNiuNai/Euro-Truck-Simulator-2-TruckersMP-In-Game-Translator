@@ -15,7 +15,7 @@ def test_basic_logging():
 
     log.info("SYS", "测试启动")
     log.warn("LLM", "测试警告")
-    log.error("BDU", "测试错误")
+    log.error("TST", "测试错误")
 
     # Check buffer
     recent = log.get_recent()

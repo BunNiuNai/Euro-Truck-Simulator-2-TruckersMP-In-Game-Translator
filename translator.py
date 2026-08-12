@@ -1,5 +1,5 @@
 """
-Translation clients - LLM API + Baidu Translate API.
+Translation client — LLM API.
 Batch mode (LLM only): collects messages within a short window, sends them as one request.
 LRU cache: avoids re-translating identical strings.
 """
@@ -508,17 +508,6 @@ class Translator(threading.Thread):
         model = provider.get("model", "")
         api_format = provider.get("api_format", "openai")
 
-        # Baidu API branch
-        if api_format == "baidu":
-            extra = provider.get("extra_body", {})
-            appid = extra.get("baidu_appid", "") or provider.get("baidu_appid", "")
-            secret = extra.get("baidu_secret", "") or provider.get("baidu_secret", "")
-            if not appid or not secret:
-                raise Exception("百度翻译需要 APP ID 和密钥")
-            target_lang = self.cfg.target_language
-            baidu_to = _lang_code_to_baidu(target_lang)
-            return translate_via_baidu(appid, secret, text, to_lang=baidu_to)
-
         # Per-provider timeout overrides the caller's timeout
         provider_timeout = timeout
         if "timeout" in provider and isinstance(provider["timeout"], (int, float)):
@@ -794,16 +783,6 @@ _SEND_LANG_NAMES: dict[str, str] = {
 }
 
 
-def _lang_code_to_baidu(lang_code: str) -> str:
-    """Map internal lang codes to Baidu Translate API lang codes."""
-    _baidu_map = {
-        "zh-CN": "zh", "en": "en", "ja": "jp", "ko": "kor",
-        "fr": "fra", "de": "de", "es": "spa",
-        "ru": "ru", "pt": "pt", "it": "it",
-    }
-    return _baidu_map.get(lang_code, "en")
-
-
 def _should_skip_internal(text: str, target_lang: str) -> bool:
     """Skip translation if text appears to already be in the target language."""
     if not text or not text.strip():
@@ -906,65 +885,11 @@ def translate_for_send(cfg: AppConfig, text: str) -> str:
     for p in providers:
         api_format = p.get("api_format", "openai")
         try:
-            if api_format == "baidu":
-                extra = p.get("extra_body", {})
-                appid = extra.get("baidu_appid", "") or p.get("baidu_appid", "")
-                secret = extra.get("baidu_secret", "") or p.get("baidu_secret", "")
-                if appid and secret:
-                    baidu_to = _lang_code_to_baidu(target_lang)
-                    return translate_via_baidu(appid, secret, text, to_lang=baidu_to)
-            else:
-                return _call_single_provider(p, text, target_lang, cfg)
+            return _call_single_provider(p, text, target_lang, cfg)
         except Exception:
             continue
 
     raise Exception("所有 Provider 发送翻译失败")
-
-
-def translate_via_baidu(appid: str, secret: str, text: str, to_lang: str = "zh") -> str:
-    """Translate text using Baidu Translate API.
-    https://fanyi-api.baidu.com/api/trans/vip/translate
-    """
-    endpoint = "https://fanyi-api.baidu.com/api/trans/vip/translate"
-    salt = str(random.randint(10000, 99999))
-    sign_str = appid + text + salt + secret
-    sign = hashlib.md5(sign_str.encode()).hexdigest()
-
-    params = {
-        "q": text,
-        "from": "auto",
-        "to": to_lang,
-        "appid": appid,
-        "salt": salt,
-        "sign": sign,
-    }
-    resp = httpx.get(endpoint, params=params, timeout=15.0)
-    resp.raise_for_status()
-    data = resp.json()
-    if "error_code" in data:
-        err_msg = data.get("error_msg", data["error_code"])
-        raise Exception(f"百度翻译错误 {data['error_code']}: {err_msg}")
-    trans_result = data.get("trans_result")
-    if not trans_result or not isinstance(trans_result, list) or len(trans_result) == 0:
-        raise Exception("百度翻译返回空结果")
-    return trans_result[0]["dst"]
-
-
-def test_baidu_connection(appid: str, secret: str) -> tuple:
-    """Test Baidu API connectivity with a minimal request. Returns (success, message)."""
-    if not appid or not secret:
-        return False, "请填写百度翻译 APP ID 和密钥"
-    try:
-        result = translate_via_baidu(appid, secret, "Hello")
-        log = get_logger()
-        if log:
-            log.info("BDU", "连通测试 OK | 百度翻译 API 标准版")
-        return True, f"连通成功 — {result[:60]}"
-    except Exception as e:
-        log = get_logger()
-        if log:
-            log.error("BDU", f"连通测试失败: {e}")
-        return False, f"连通失败: {e}"
 
 
 def _parse_api_error(response) -> str:

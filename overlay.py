@@ -47,7 +47,7 @@ BORDER   = BORDER_BLUE   # window outer border
 CARD_BG  = "#151515"     # card elements (slightly lighter than pure black)
 STATS_BG = "#111111"     # stats bar background
 SELF_GREEN = "#4ec9b0"   # self-message prefix
-ERROR_RED  = "#f44747"   # error/baidu fix
+ERROR_RED  = "#f44747"   # error highlight
 NOTICE_BG  = "#2a2a2a"
 ENTRY_BG   = "#1e1e1e"   # input entry background
 

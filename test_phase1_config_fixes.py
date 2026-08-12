@@ -119,65 +119,7 @@ def test_save_config_uses_atomic_write():
         shutil.rmtree(tmpd, ignore_errors=True)
 
 
-# ── Test 4: Baidu migration stores DECRYPTED values in extra_body ──
-
-def test_baidu_migration_stores_decrypted_secrets():
-    """Baidu v2.1 migration must store DECRYPTED appid/secret values
-    in extra_body, not the DPAPI-encrypted ciphertext."""
-    tmpd = tempfile.mkdtemp(prefix="ets2_cfg_test_")
-    tmpcfg = os.path.join(tmpd, "config.json")
-
-    # Simulate old config with DPAPI-encrypted baidu fields
-    encrypted_secret = _maybe_encrypt("baidu_secret", "my_baidu_secret_123")
-    assert encrypted_secret.startswith("dpapi:")
-
-    old_data = {
-        "translation_backend": "llm+baidu",
-        "provider_mode": "race",
-        "baidu_appid": "my_appid_456",
-        "baidu_secret": encrypted_secret,  # DPAPI-encrypted
-        "llm_providers": [],
-    }
-    with open(tmpcfg, "w", encoding="utf-8") as f:
-        json.dump(old_data, f)
-
-    import config as cfg_module
-    orig_path = cfg_module.CONFIG_PATH
-    orig_dir = cfg_module.CONFIG_DIR
-    cfg_module.CONFIG_PATH = tmpcfg
-    cfg_module.CONFIG_DIR = tmpd
-    try:
-        result = load_config()
-        baidu = [p for p in result.llm_providers if p.get("api_format") == "baidu"]
-        assert len(baidu) == 1, f"Expected 1 Baidu provider, got {len(baidu)}"
-
-        extra = baidu[0].get("extra_body", {})
-        secret = extra.get("baidu_secret", "")
-        appid = extra.get("baidu_appid", "")
-
-        assert appid == "my_appid_456", (
-            f"Baidu appid should be 'my_appid_456', got '{appid}'"
-        )
-        assert secret == "my_baidu_secret_123", (
-            f"CRITICAL: Baidu secret stored as ciphertext! "
-            f"Expected 'my_baidu_secret_123', got '{secret}'. "
-            f"This means the API will receive encrypted garbage."
-        )
-
-        # The stored encrypted value should NOT appear anywhere
-        assert encrypted_secret not in secret, (
-            "Encrypted DPAPI ciphertext must not leak into extra_body"
-        )
-
-        print("PASS: Baidu migration stores decrypted secrets")
-    finally:
-        cfg_module.CONFIG_PATH = orig_path
-        cfg_module.CONFIG_DIR = orig_dir
-        import shutil
-        shutil.rmtree(tmpd, ignore_errors=True)
-
-
-# ── Test 5: Fallback config path is checked on load ──
+# ── Test 4: Fallback config path is checked on load ──
 
 def test_fallback_config_path_checked_on_load():
     """When Documents config doesn't exist, load_config should check
@@ -271,51 +213,10 @@ def test_fallback_save_no_keyerror():
         shutil.rmtree(tmpd, ignore_errors=True)
 
 
-# ── Test 7: Baidu provider extra_body encryption ──
-
-def test_baidu_extra_body_encrypted_on_save():
-    """Baidu provider's extra_body.baidu_secret must be encrypted on save."""
-    tmpd = tempfile.mkdtemp(prefix="ets2_cfg_test_")
-    tmpcfg = os.path.join(tmpd, "config.json")
-
-    cfg = AppConfig()
-    cfg.llm_providers = [
-        {"label": "Baidu", "endpoint": "https://fanyi-api.baidu.com/api/trans/vip/translate",
-         "api_key": "", "model": "通用翻译", "enabled": True,
-         "api_format": "baidu",
-         "extra_body": {"baidu_appid": "my_appid", "baidu_secret": "my_secret_key"}}
-    ]
-
-    import config as cfg_module
-    orig_path = cfg_module.CONFIG_PATH
-    orig_dir = cfg_module.CONFIG_DIR
-    cfg_module.CONFIG_PATH = tmpcfg
-    cfg_module.CONFIG_DIR = tmpd
-    try:
-        save_config(cfg)
-
-        # Read the raw file — baidu_secret should NOT be in plaintext
-        with open(tmpcfg, "r", encoding="utf-8") as f:
-            raw = f.read()
-
-        assert "my_secret_key" not in raw, (
-            "CRITICAL: Baidu secret stored in plaintext in config.json! "
-            "Must be encrypted via DPAPI."
-        )
-        print("PASS: Baidu extra_body secret encrypted on save")
-    finally:
-        cfg_module.CONFIG_PATH = orig_path
-        cfg_module.CONFIG_DIR = orig_dir
-        import shutil
-        shutil.rmtree(tmpd, ignore_errors=True)
-
-
 if __name__ == "__main__":
     test_maybe_decrypt_failure_preserves_original()
     test_corrupted_config_backed_up()
     test_save_config_uses_atomic_write()
-    test_baidu_migration_stores_decrypted_secrets()
     test_fallback_config_path_checked_on_load()
     test_fallback_save_no_keyerror()
-    test_baidu_extra_body_encrypted_on_save()
     print("\n=== ALL PHASE 1 CONFIG TESTS PASSED ===")

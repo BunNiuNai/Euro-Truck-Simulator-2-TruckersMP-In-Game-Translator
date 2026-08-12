@@ -62,7 +62,6 @@ PROVIDER_ICONS: dict[str, str] = {
     "zhipu": "🧠",
     "kimi": "🌟",
     "doubao": "🫘",
-    "baidu": "🌐",
     "xunfei": "🎤",
     "hunyuan": "💬",
     "stepfun": "🚀",
@@ -174,14 +173,6 @@ PRESETS: list[ProviderPreset] = [
         category="cn_cloud", description="字节跳动豆包系列",
     ),
     ProviderPreset(
-        id="baidu_qianfan", name="百度千帆",
-        website_url="https://qianfan.cloud.baidu.com/", api_key_url="https://console.bce.baidu.com/qianfan/ais/console/applicationConsole/application",
-        endpoint="https://qianfan.baidubce.com/v2", api_format="openai",
-        default_model="ernie-speed-128k", models_url="",
-        icon="baidu", icon_color="#2932E1",
-        category="cn_cloud", description="百度文心一言系列",
-    ),
-    ProviderPreset(
         id="xunfei", name="讯飞星火",
         website_url="https://xinghuo.xfyun.cn/", api_key_url="https://console.xfyun.cn/services/bm3",
         endpoint="https://spark-api-open.xf-yun.com/v1", api_format="openai",
@@ -276,24 +267,6 @@ PRESETS: list[ProviderPreset] = [
         category="local", description="高性能本地推理引擎",
     ),
 
-    # ── 百度翻译 ──
-    ProviderPreset(
-        id="baidu",
-        name="百度翻译",
-        website_url="https://fanyi-api.baidu.com/",
-        api_key_url="https://fanyi-api.baidu.com/api/trans/product/desktop",
-        endpoint="https://fanyi-api.baidu.com/api/trans/vip/translate",
-        api_format="baidu",
-        default_model="通用翻译",
-        models_url="",
-        icon="baidu",
-        icon_color="#3385FF",
-        category="cn_cloud",
-        template_headers={},
-        template_body={},
-        description="百度翻译 API，标准版每月 500 万字符免费",
-        recommended=False,
-    ),
 ]
 
 

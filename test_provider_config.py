@@ -97,48 +97,10 @@ def test_multiple_providers_save_load():
         import shutil
         shutil.rmtree(tmpd, ignore_errors=True)
 
-def test_v21_migration_baidu_as_provider():
-    """v2.1: old translation_backend + baidu_appid → Baidu provider in llm_providers."""
-    tmpd = tempfile.mkdtemp(prefix="ets2_cfg_test_")
-    tmpcfg = os.path.join(tmpd, "config.json")
-
-    old_data = {
-        "translation_backend": "llm+baidu",
-        "provider_mode": "race",
-        "baidu_appid": "test_appid",
-        "baidu_secret": "test_secret",
-        "llm_providers": [
-            {"label": "GPT", "endpoint": "https://api.openai.com/v1/chat/completions",
-             "api_key": "sk-xxx", "model": "gpt-4o", "enabled": True}
-        ],
-    }
-    with open(tmpcfg, "w", encoding="utf-8") as f:
-        json.dump(old_data, f)
-
-    import config as cfg_module
-    orig_path = cfg_module.CONFIG_PATH
-    orig_dir = cfg_module.CONFIG_DIR
-    cfg_module.CONFIG_PATH = tmpcfg
-    cfg_module.CONFIG_DIR = tmpd
-    try:
-        result = load_config()
-        baidu = [p for p in result.llm_providers if p.get("api_format") == "baidu"]
-        assert len(baidu) == 1, f"Expected 1 Baidu provider, got {len(baidu)}"
-        assert baidu[0]["label"] == "百度翻译"
-        assert baidu[0]["model"] == "通用翻译"
-        assert "baidu_appid" in baidu[0].get("extra_body", {}) or "baidu_appid" in baidu[0]
-        print("PASS: v2.1 Baidu migration")
-    finally:
-        cfg_module.CONFIG_PATH = orig_path
-        cfg_module.CONFIG_DIR = orig_dir
-        import shutil
-        shutil.rmtree(tmpd, ignore_errors=True)
-
 if __name__ == "__main__":
     test_provider_config_default()
     test_appconfig_providers_field()
     test_migration_from_old_fields()
     test_provider_api_key_encrypted()
     test_multiple_providers_save_load()
-    test_v21_migration_baidu_as_provider()
     print("\n=== ALL PROVIDER CONFIG TESTS PASSED ===")

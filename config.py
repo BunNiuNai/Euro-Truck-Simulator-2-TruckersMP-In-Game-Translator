@@ -79,7 +79,7 @@ def _dpapi_decrypt(ciphertext: str) -> str:
 
 
 # Fields that should be encrypted at rest
-_SECRET_FIELDS = {"api_key", "baidu_secret"}
+_SECRET_FIELDS = {"api_key"}
 # Prefix to identify encrypted values in JSON
 _ENC_PREFIX = "dpapi:"
 
@@ -258,8 +258,6 @@ class AppConfig:
     paste_hotkey: str = "ctrl+v" # hotkey to paste (Ctrl+V) into game
     enter_hotkey: str = "enter"  # hotkey to press Enter in game
     send_hotkey: str = "shift+y" # global hotkey to focus translator input
-    baidu_appid: str = ""   # Baidu Translate APP ID (kept for migration detection)
-    baidu_secret: str = ""  # Baidu Translate secret key (kept for migration detection)
     debug_log: bool = False  # enable debug logging to %TEMP%
     show_language_label: bool = True  # show [语言] label before each translated message
     show_original_text: bool = True  # show original text in smaller gray below translation
@@ -328,56 +326,6 @@ def _migrate_config_v2(data: dict) -> dict:
     return data
 
 
-def _migrate_config_v21(data: dict) -> None:
-    """v2.0 → v2.1 migration: convert Baidu flat fields to a provider.
-    MUST run AFTER top-level decryption so extra_body gets plaintext values."""
-    _baidu_appid = data.get("baidu_appid", "")
-    _baidu_secret = data.get("baidu_secret", "")
-    # Clean these from merged data (set to empty, not pop, so AppConfig ctor still works)
-    data["baidu_appid"] = ""
-    data["baidu_secret"] = ""
-
-    if not _baidu_appid or not _baidu_secret:
-        return
-
-    # Check if a Baidu provider already exists
-    has_baidu = any(
-        p.get("api_format") == "baidu" for p in data.get("llm_providers", [])
-    )
-    if has_baidu:
-        return
-
-    baidu_provider = {
-        "id": "baidu",
-        "label": "百度翻译",
-        "endpoint": "https://fanyi-api.baidu.com/api/trans/vip/translate",
-        "api_key": "",
-        "model": "通用翻译",
-        "enabled": True,
-        "preset_id": "baidu",
-        "icon": "baidu",
-        "api_format": "baidu",
-        "weight": 100,
-        "extra_headers": {},
-        "extra_body": {
-            "baidu_appid": _baidu_appid,
-            "baidu_secret": _baidu_secret,
-        },
-        "timeout": 5,
-    }
-    data.setdefault("llm_providers", []).append(baidu_provider)
-
-
-def _decrypt_provider_extra_body(provider: dict) -> None:
-    """Decrypt sensitive fields inside a provider's extra_body dict."""
-    extra = provider.get("extra_body")
-    if not isinstance(extra, dict):
-        return
-    for field in _SECRET_FIELDS:
-        if field in extra and isinstance(extra[field], str) and _is_encrypted(extra[field]):
-            extra[field] = _maybe_decrypt(field, extra[field])
-
-
 def ensure_config_dir():
     os.makedirs(CONFIG_DIR, exist_ok=True)
 
@@ -424,21 +372,15 @@ def load_config():
     data = _migrate_config_v2(data)
     # Merge loaded data over defaults (allow partial configs)
     merged = {**defaults, **data}
-    # Decrypt sensitive top-level fields (must run BEFORE Baidu migration to
-    # ensure decrypted values are embedded into provider extra_body)
+    # Decrypt sensitive top-level fields
     for field in _SECRET_FIELDS:
         if field in merged and isinstance(merged[field], str):
             merged[field] = _maybe_decrypt(field, merged[field])
-
-    # Run v2.1 Baidu migration AFTER decryption so extra_body gets plaintext
-    _migrate_config_v21(merged)
 
     # Decrypt sensitive fields in providers
     for provider in merged.get("llm_providers", []):
         if "api_key" in provider and isinstance(provider["api_key"], str):
             provider["api_key"] = _maybe_decrypt("api_key", provider["api_key"])
-        # Also decrypt baidu_secret in extra_body if present
-        _decrypt_provider_extra_body(provider)
 
     # Migration: if llm_providers is empty but old api_endpoint is set, create one provider
     if not merged.get("llm_providers") and merged.get("api_endpoint"):
@@ -461,26 +403,15 @@ def save_config(cfg: AppConfig):
         if field in data and isinstance(data[field], str):
             data[field] = _maybe_encrypt(field, data[field])
 
-    # Encrypt sensitive fields in providers (api_key + extra_body)
+    # Encrypt sensitive fields in providers
     for provider in data.get("llm_providers", []):
         if "api_key" in provider and isinstance(provider["api_key"], str):
             provider["api_key"] = _maybe_encrypt("api_key", provider["api_key"])
-        # Encrypt baidu_secret inside extra_body if present
-        _encrypt_provider_extra_body(provider)
 
     content = json.dumps(data, indent=2, ensure_ascii=False)
     # Always use atomic save to prevent corruption from hot-reload races
     _atomic_save(content)
 
-
-def _encrypt_provider_extra_body(provider: dict) -> None:
-    """Encrypt sensitive fields inside a provider's extra_body dict."""
-    extra = provider.get("extra_body")
-    if not isinstance(extra, dict):
-        return
-    for field in _SECRET_FIELDS:
-        if field in extra and isinstance(extra[field], str):
-            extra[field] = _maybe_encrypt(field, extra[field])
 
 
 def _atomic_save(content: str):
