@@ -1245,6 +1245,8 @@ class SettingsDialog:
         card.grid(row=index, column=0, sticky="ew", pady=(0, 4))
         card.columnconfigure(1, weight=1)
 
+        is_baidu = p.get("api_format") == "baidu"
+
         # Header: enabled checkbox + label + buttons
         header = tk.Frame(card, bg=self._CARD_BG)
         header.grid(row=0, column=0, columnspan=2, sticky="ew", padx=8, pady=(4, 0))
@@ -1284,17 +1286,38 @@ class SettingsDialog:
         label_entry.grid(row=r, column=1, sticky=tk.EW, padx=(0, 12), pady=3)
         r += 1
 
-        self._label(card, "Endpoint / 地址").grid(row=r, column=0, sticky=tk.W, padx=(16, 8), pady=3)
-        ep_entry = self._entry(card, width=36)
-        ep_entry.insert(0, p.get("endpoint", ""))
-        ep_entry.grid(row=r, column=1, sticky=tk.EW, padx=(0, 12), pady=3)
-        r += 1
+        appid_entry = None
+        secret_entry = None
+        ep_entry = None
+        key_entry = None
 
-        self._label(card, "API Key / 密钥").grid(row=r, column=0, sticky=tk.W, padx=(16, 8), pady=3)
-        key_entry = self._entry(card, show="*", width=36)
-        key_entry.insert(0, p.get("api_key", ""))
-        key_entry.grid(row=r, column=1, sticky=tk.EW, padx=(0, 12), pady=3)
-        r += 1
+        if is_baidu:
+            # Baidu: show APP ID + Secret instead of Endpoint + API Key
+            extra = p.get("extra_body", {})
+            self._label(card, "APP ID").grid(row=r, column=0, sticky=tk.W, padx=(16, 8), pady=3)
+            appid_entry = self._entry(card, width=36)
+            appid_entry.insert(0, extra.get("baidu_appid", ""))
+            appid_entry.grid(row=r, column=1, sticky=tk.EW, padx=(0, 12), pady=3)
+            r += 1
+
+            self._label(card, "Secret / 密钥").grid(row=r, column=0, sticky=tk.W, padx=(16, 8), pady=3)
+            secret_entry = self._entry(card, show="*", width=36)
+            secret_entry.insert(0, extra.get("baidu_secret", ""))
+            secret_entry.grid(row=r, column=1, sticky=tk.EW, padx=(0, 12), pady=3)
+            r += 1
+        else:
+            # Standard LLM: Endpoint + API Key
+            self._label(card, "Endpoint / 地址").grid(row=r, column=0, sticky=tk.W, padx=(16, 8), pady=3)
+            ep_entry = self._entry(card, width=36)
+            ep_entry.insert(0, p.get("endpoint", ""))
+            ep_entry.grid(row=r, column=1, sticky=tk.EW, padx=(0, 12), pady=3)
+            r += 1
+
+            self._label(card, "API Key / 密钥").grid(row=r, column=0, sticky=tk.W, padx=(16, 8), pady=3)
+            key_entry = self._entry(card, show="*", width=36)
+            key_entry.insert(0, p.get("api_key", ""))
+            key_entry.grid(row=r, column=1, sticky=tk.EW, padx=(0, 12), pady=3)
+            r += 1
 
         self._label(card, "Model / 模型").grid(row=r, column=0, sticky=tk.W, padx=(16, 8), pady=3)
         model_entry = self._entry(card, width=36)
@@ -1304,9 +1327,12 @@ class SettingsDialog:
         self._provider_widgets.append({
             "frame": card,
             "enabled_var": en_var,
+            "is_baidu": is_baidu,
             "label_entry": label_entry,
             "ep_entry": ep_entry,
             "key_entry": key_entry,
+            "appid_entry": appid_entry,
+            "secret_entry": secret_entry,
             "model_entry": model_entry,
         })
 
@@ -1349,9 +1375,16 @@ class SettingsDialog:
         for i, w in enumerate(self._provider_widgets):
             if i < len(self.cfg.llm_providers):
                 self.cfg.llm_providers[i]["label"] = w["label_entry"].get().strip()
-                self.cfg.llm_providers[i]["endpoint"] = w["ep_entry"].get().strip()
-                self.cfg.llm_providers[i]["api_key"] = w["key_entry"].get().strip()
                 self.cfg.llm_providers[i]["model"] = w["model_entry"].get().strip()
+                if w.get("is_baidu"):
+                    # Baidu: store APP ID + Secret in extra_body
+                    self.cfg.llm_providers[i]["extra_body"] = {
+                        "baidu_appid": (w.get("appid_entry") and w["appid_entry"].get().strip()) or "",
+                        "baidu_secret": (w.get("secret_entry") and w["secret_entry"].get().strip()) or "",
+                    }
+                else:
+                    self.cfg.llm_providers[i]["endpoint"] = (w.get("ep_entry") and w["ep_entry"].get().strip()) or ""
+                    self.cfg.llm_providers[i]["api_key"] = (w.get("key_entry") and w["key_entry"].get().strip()) or ""
 
     def _test_all_providers(self):
         """Test connectivity for all enabled providers."""
