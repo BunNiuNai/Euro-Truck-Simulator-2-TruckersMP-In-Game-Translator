@@ -1,16 +1,17 @@
 # 🚛 ETS2 TruckersMP Chat Translator · 欧卡联机聊天翻译器
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-v2.0.0-4494FC?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-v2.2.0-4494FC?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-10b981?style=for-the-badge" alt="License">
   <img src="https://img.shields.io/badge/platform-Windows%2010%2F11-0078D6?style=for-the-badge&logo=windows" alt="Platform">
   <img src="https://img.shields.io/badge/python-3.10%2B-3776AB?style=for-the-badge&logo=python" alt="Python">
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/github/downloads/BunNiuNai/Euro-Truck-Simulator-2-TruckersMP-In-Game-Translator/total?style=flat-square&color=3b82f6" alt="Downloads">
+  <img src="https://img.shields.io/github/downloads/BunNiuNai/Euro-Truck-Simulator-2-TruckersMP-In-Game-Translator/total?style=flat-square&color=3b82f6&label=总下载" alt="Downloads">
   <img src="https://img.shields.io/github/stars/BunNiuNai/Euro-Truck-Simulator-2-TruckersMP-In-Game-Translator?style=flat-square&color=f59e0b" alt="Stars">
   <img src="https://img.shields.io/github/last-commit/BunNiuNai/Euro-Truck-Simulator-2-TruckersMP-In-Game-Translator?style=flat-square&color=64748b" alt="Last Commit">
+  <img src="https://img.shields.io/github/repo-size/BunNiuNai/Euro-Truck-Simulator-2-TruckersMP-In-Game-Translator?style=flat-square&color=8b5cf6" alt="Repo Size">
 </p>
 
 <p align="center">
@@ -19,29 +20,44 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/BunNiuNai/Euro-Truck-Simulator-2-TruckersMP-In-Game-Translator/releases"><b>⬇️ 下载 Exe</b></a>
+  <a href="https://github.com/BunNiuNai/Euro-Truck-Simulator-2-TruckersMP-In-Game-Translator/releases/latest">
+    <img src="https://img.shields.io/badge/⬇️%20下载最新版-Download%20Latest-4494FC?style=for-the-badge&logo=github" alt="Download">
+  </a>
+</p>
+
+<p align="center">
+  <a href="#-quick-start--快速开始">🚀 快速开始</a>
   &nbsp;&nbsp;·&nbsp;&nbsp;
-  <a href="#-quick-start--快速开始"><b>🚀 快速开始</b></a>
+  <a href="#-features--功能特性">✨ 功能特性</a>
   &nbsp;&nbsp;·&nbsp;&nbsp;
-  <a href="#-features--功能特性"><b>✨ 功能特性</b></a>
+  <a href="#-推荐大模型">🧠 推荐模型</a>
   &nbsp;&nbsp;·&nbsp;&nbsp;
-  <a href="#-faq--常见问题"><b>❓ 常见问题</b></a>
+  <a href="#-faq--常见问题">❓ 常见问题</a>
+  &nbsp;&nbsp;·&nbsp;&nbsp;
+  <a href="#-changelog--更新日志">📋 更新日志</a>
 </p>
 
 ---
 
-> 🚛 在 ETS2 TruckersMP 联机中，自动将各国语言聊天实时翻译为简体中文，以现代毛玻璃悬浮窗显示。
-> 支持中文打字 → 自动翻译为英文 → 一键发送到游戏聊天。**完全免费 · 开源 · 无需安装 Python**
-> 
-> 🎨 **v2.0.0 全新设计**: Win11 Mica / Win10 Acrylic 毛玻璃效果 · 服务器自动识别 · 三层蓝色配色体系
+> [!TIP]
+> 🚛 在 ETS2 TruckersMP 联机中，自动将各国语言聊天实时翻译为简体中文，以现代毛玻璃悬浮窗显示。支持中文打字 → 自动翻译为英文 → 一键发送到游戏聊天。
+>
+> 🎨 **v2.2.0**：Win11 Mica / Win10 Acrylic 毛玻璃效果 · 多模型轮转负载均衡 · 百度翻译独立工具 · 统一日志系统
+>
+> 💯 **完全免费 · 开源 · 无需安装 Python**
 
 ---
 
 ## 📖 目录
 
 - [✨ 功能特性](#-features--功能特性)
-- [🆕 近期更新](#-近期更新)
-- [🧠 推荐大模型](#-recommended-llm--推荐大模型)
+  - [🌐 核心翻译](#-核心翻译)
+  - [🧠 智能翻译引擎](#-智能翻译引擎)
+  - [🪟 窗口与交互](#-窗口与交互)
+  - [📋 日志与诊断](#-日志与诊断)
+  - [🔧 其他特性](#-其他特性)
+- [📋 更新日志](#-changelog--更新日志)
+- [🧠 推荐大模型](#-推荐大模型)
 - [🖥 系统要求](#-system-requirements--系统要求)
 - [🚀 快速开始](#-quick-start--快速开始)
 - [⚙️ 配置说明](#️-configuration--配置说明)
@@ -69,42 +85,42 @@
 
 | 🏷️ | 功能 | 说明 |
 |:---:|---|---|
-| 🏎️ | **多 Provider 并行竞速** | 配置多个大模型 API，同时发起请求，**谁快用谁** |
+| 🔄 | **多模型轮转负载均衡** | 多个 LLM Provider 按轮转顺序分配翻译任务，避免排队等待 |
 | 📦 | **20+ Provider 预设** | 内置国内外主流 LLM 供应商模板，一键填入地址和模型 |
 | 📥 | **模型列表拉取** | 从 API 端点自动获取可用模型，无需手动查模型名 |
-| 🔄 | **Provider 熔断回退** | 连续失败 3 次自动冷却，成功恢复；全部失败串行重试 |
+| 🛡️ | **Provider 熔断回退** | 连续失败自动冷却，成功恢复；全部失败串行重试 |
 | 📦 | **批量翻译** | 0.3 秒窗口收集多条消息，合并为一次 API 请求 |
 | 💾 | **LRU 缓存 1000 条** | 重复消息直接命中缓存，零延迟零消耗 |
 | 🌐 | **混合语言智能拆分** | 中文片段保留不译，只翻译非中文部分，适配游戏混合聊天 |
-| 🔀 | **三种翻译后端** | LLM / 百度翻译 / LLM+百度监督混合模式 |
-| 🛡️ | **百度翻译监督** | LLM 先翻译 → 百度对比纠错 → 不一致自动替换 |
+| 🔀 | **多翻译后端** | LLM / 百度翻译 — 各自独立工作，按轮转调度 |
 | 📊 | **同文本请求合并** | 相同原文并发到达时自动合并为一次 API 调用 |
 | 🔐 | **DPAPI 加密存储** | API Key 使用 Windows 系统级加密，配置文件不暴露明文 |
+| 🎯 | **发送目标语言** | 支持 10 种目标语言：中/英/日/韩/德/法/西/俄/葡/意 |
 
 ### 🪟 窗口与交互
 
 | 🏷️ | 功能 | 说明 |
 |:---:|---|---|
 | 🪟 | **毛玻璃悬浮窗** | Win11 Mica / Win10 Acrylic 亚克力模糊效果，纯黑透明底色 + 1px 蓝色描边 |
-| 🎨 | **三层蓝色配色** | #4494FC 主色调 / #60A8FF 描边线 / #70B8FF 高亮文字，冷色调科技风格 |
+| 🎨 | **三层蓝色配色** | `#4494FC` 主色调 / `#60A8FF` 描边线 / `#70B8FF` 高亮文字，冷色调科技风格 |
 | 📐 | **四段式纵向布局** | 蓝色 accent 线 → 标题栏（版本+服务器）→ 消息区 → 输入框 → 统计栏 |
-| ⌨️ | **系统级全局热键** | RegisterHotKey 系统热键，不会被游戏拦截 |
+| ⌨️ | **系统级全局热键** | `RegisterHotKey` 系统热键，不会被游戏拦截 |
 | 📋 | **系统托盘图标** | 右键托盘菜单：显示/隐藏、切换模式、鼠标穿透、设置、退出 |
 | 🕐 | **北京时间显示** | 标题栏右侧实时显示北京时间 |
-| 🏷️ | **服务器自动识别** | 自动解析聊天日志中的 'Connecting to X server...' 并更新标题栏 |
-| ⏱️ | **消息时间戳** | 每条消息右侧对齐显示 HH:MM:SS 时间 |
+| 🏷️ | **服务器自动识别** | 自动解析聊天日志中的 `Connecting to X server...` 并更新标题栏 |
+| ⏱️ | **消息时间戳** | 每条消息右侧对齐显示 `HH:MM:SS` 时间 |
 | 📝 | **输入框常驻** | 消息区与统计栏之间直接显示，随时输入 |
+| ✨ | **译文金色显示** | 翻译结果在悬浮窗中以金色高亮展示 |
 
 ### 📋 日志与诊断
 
 | 🏷️ | 功能 | 说明 |
 |:---:|---|---|
-| 📋 | **翻译器日志** | 系统事件、API 连通、错误详情、TMP 监控、周期统计 |
-| 💬 | **消息日志** | 已翻译的聊天记录，原文和译文并排查看 |
-| 📂 | **自动写入文件** | 日志保存到 Documents\ETS2 Translator\logs\，自动轮转 |
+| 📋 | **统一日志系统** | 翻译日志和消息日志合二为一，格式：`时间 - 厂商-模型名 - 原文 - 译文` |
+| 📂 | **自动写入文件** | 日志保存到 `文档\ETS2 Translator\logs\`，自动轮转 |
 | 🔍 | **一键测试全部** | 测试所有 Provider + 百度翻译的连通性 |
 
-### 🔧 其他
+### 🔧 其他特性
 
 | 🏷️ | 功能 | 说明 |
 |:---:|---|---|
@@ -112,68 +128,76 @@
 | 💬 | **游戏术语库** | 内置 130+ 行 ETS2 专用术语 + 100+ 条网游俚语 |
 | ✂️ | **消息分割线** | 每条翻译消息下方分隔线，快速区分 |
 | 🚫 | **聊天去重** | 同一条消息（玩家+内容+时间戳）不重复显示 |
-| 🎛️ | **10 种目标语言** | 简体中文 / English / 日本語 / 한국어 / Français / Deutsch / Español / Русский / Português / Italiano |
 
 ---
 
-## 🆕 近期更新
+## 📋 Changelog · 更新日志
+
+### 🔥 v2.1.0 — 热修复版本
+
+- **🔄 多模型轮转负载均衡** — 多个 Provider 按轮转顺序分配翻译任务，避免排队等待，单 Provider 行为不变
+- **🔧 百度翻译独立化** — 百度翻译从"纠错验证者"变为普通 Provider，参与轮转调度，不再有 `[百度优化]` 标记
+- **📋 统一日志系统** — 翻译日志和消息日志合二为一，格式统一，修复删除日志按钮无效的 Bug
+- **🎯 发送目标语言** — 支持 10 种目标语言，简洁指令格式兼容 Hunyuan-MT-7B、Qwen2.5-7B、Qwen3-8B 等小模型
+- **✨ 译文金色显示** — 翻译结果在悬浮窗中以金色高亮展示
+- **🔧 多项修复** — Test 按钮无反应、删除日志崩溃、设置保存丢失配置、Translator 未初始化属性等
+
+<details>
+<summary><b>📦 历史版本 — 点击展开</b></summary>
 
 ### 🎨 v2.0.0 — 现代毛玻璃 UI 全面重构
 
 - **🪟 全新毛玻璃悬浮窗** — Win11 Mica / Win10 Acrylic 自动适配，纯黑无色透明背景 + 1px 蓝色描边
-- **🎨 三层蓝色配色** — #4494FC 主色调 / #60A8FF 描边线 / #70B8FF 高亮文字
+- **🎨 三层蓝色配色** — `#4494FC` 主色调 / `#60A8FF` 描边线 / `#70B8FF` 高亮文字
 - **📐 四段式纵向布局** — 蓝色 accent 线 → 标题栏 → 消息区 → 输入框 → 统计栏
 - **🏷️ 服务器自动识别** — 标题栏实时显示当前连接的服务器名称
-- **⏱️ 消息时间戳** — 每条消息右侧对齐显示 HH:MM:SS
+- **⏱️ 消息时间戳** — 每条消息右侧对齐显示 `HH:MM:SS`
 - **📝 输入框常驻** — 消息区下方直接输入，无需按热键呼出
 - **🔧 系统消息翻译修复** — TMP 系统通知正确翻译为中文
-- **9 个文件、72 个单元测试**覆盖核心模块
+- **🧪 72 个单元测试** — 覆盖核心模块
 
 ### 🚀 v1.8.0 — Provider 预设系统 & 混合语言智能翻译
 
-- **📦 Provider 预设系统**：内置 20+ 国内外 LLM 供应商预设，点击即可自动填入 API 地址和推荐模型，只需填写 Key
-- **📥 模型列表拉取**：一键从 API 端点获取可用模型列表，不再需要手动查模型名
-- **🌐 混合语言智能翻译**：消息中夹杂中文的部分原样保留，只翻译非中文片段，解决 LLM 看到中文就跳过的问题
-- **🔍 连通性测试**：Provider 编辑区新增实时 API 延迟检测
-- **🛠️ 日志删除修复**：修复翻译器日志和消息日志无法通过系统按钮删除的问题
-- **7 个测试文件、72 个单元测试**覆盖核心模块
+- **📦 Provider 预设系统** — 内置 20+ 国内外 LLM 供应商预设，点击自动填入 API 地址和推荐模型
+- **📥 模型列表拉取** — 一键从 API 端点获取可用模型列表
+- **🌐 混合语言智能翻译** — 消息中夹杂中文的部分原样保留，只翻译非中文片段
+- **🔍 连通性测试** — Provider 编辑区新增实时 API 延迟检测
+- **🛠️ 日志删除修复** — 修复翻译器日志无法通过系统按钮删除的问题
 
 ### 📤 v1.6.0 / v1.7.0
 
 - 广告消息自动定时发送、Provider 权重配置、API 格式支持（OpenAI + Anthropic）
 
-<details>
-<summary><b>v1.5.x · v1.4.0 · v1.3.0 — 点击展开</b></summary>
+### 🔧 v1.5.2 — 窗口渲染修复
 
-### 🚀 v1.5.2 — 窗口渲染修复
-- 标准窗口模式 **拖影问题修复**，不再走 Windows layered window
+- 标准窗口模式拖影问题修复，不再走 Windows layered window
 - exe 文件名含版本号，方便识别
 
 ### 📤 v1.5.1 / v1.5.0 — 自动发送 + 日志管理
-- **中文输入 → 自动翻译 → 自动发送到游戏**，全流程自动化
+
+- 中文输入 → 自动翻译 → 自动发送到游戏，全流程自动化
 - 翻译器日志 + 消息日志分拆管理，支持文件夹打开/删除/刷新
-- 设置页面新增**鸣谢栏**（作者 & 贡献者）
 
 ### 🛡️ v1.4.0 — 21 项稳定性修复
+
 - 线程安全、DPAPI 加密、崩溃恢复、内存泄漏、竞态条件全面修复
 - 启动时跳过历史消息，仅增量读取新消息
 
 ### 🌐 v1.3.0 — 多 Provider 并行竞速
-- 配置多个大模型 API，翻译时**并行竞速**，最快的结果立即返回
-- Provider 连续失败 3 次自动**熔断冷却**，成功后自动恢复
-- **同文本并发请求自动合并**，节省 API 费用
-- 配置热重载：修改配置文件 3 秒自动生效
-- 热键升级为 **RegisterHotKey 系统级热键**
-- 批量等待 0.8s → **0.3s**，HTTP 超时 30s → **8s**，缓存 200 → **1000 条**
+
+- 配置多个大模型 API，翻译时并行竞速，最快的结果立即返回
+- Provider 熔断冷却、同文本并发合并、配置热重载
+- 热键升级为 `RegisterHotKey` 系统级热键
 - TMP 系统消息翻译 + VS Code 深灰主题 + 窗口圆角 + 北京时间
 
 </details>
 
 ---
 
-## 🧠 Recommended LLM · 推荐大模型
+## 🧠 推荐大模型
 
-> 💡 任意兼容 OpenAI API 格式的服务均可使用，填写地址、密钥和模型名即可。
+> [!NOTE]
+> 任意兼容 OpenAI API 格式的服务均可使用，填写地址、密钥和模型名即可。
 
 | 🏢 提供商 | 🤖 推荐模型 | 💰 价格 | 📝 备注 |
 |:---|:---|:---|:---|
@@ -183,9 +207,10 @@
 | ⚡ [Groq](https://groq.com/) | `llama-3.3-70b` | 🆓 免费额度 | 推理速度极快 |
 | 🏠 [Ollama](https://ollama.com/) | `qwen3:8b` | 🆓 本地免费 | 无需网络，隐私安全 |
 
+> [!TIP]
 > 🔥 **国内用户推荐**：硅基流动 + Qwen3-8B，免费额度、国内直连、速度快。
 >
-> 🌍 **海外用户推荐**：OpenAI gpt-4o-mini 或 DeepSeek，便宜且翻译质量高。
+> 🌍 **海外用户推荐**：OpenAI `gpt-4o-mini` 或 DeepSeek，便宜且翻译质量高。
 
 ---
 
@@ -203,7 +228,7 @@
 
 ### 方式一：📦 下载 exe 直接运行（推荐）
 
-从 [📥 GitHub Releases](https://github.com/BunNiuNai/Euro-Truck-Simulator-2-TruckersMP-In-Game-Translator/releases) 下载最新 `ETS2-TruckersMP翻译器-v1.5.2.exe`，双击运行即可。
+从 [📥 GitHub Releases](https://github.com/BunNiuNai/Euro-Truck-Simulator-2-TruckersMP-In-Game-Translator/releases/latest) 下载最新 `ETS2-TruckersMP翻译器-v2.2.0.exe`，双击运行即可。
 
 > ✅ 无需安装 Python · 无需配置环境 · 开箱即用
 
@@ -214,7 +239,7 @@
 git clone https://github.com/BunNiuNai/Euro-Truck-Simulator-2-TruckersMP-In-Game-Translator.git
 cd Euro-Truck-Simulator-2-TruckersMP-In-Game-Translator
 
-# 2️⃣ 安装依赖（仅 httpx 一个包）
+# 2️⃣ 安装依赖
 pip install -r requirements.txt
 
 # 3️⃣ 运行
@@ -225,7 +250,7 @@ python main.py
 
 ```bash
 python build_exe.py
-# 输出 → dist/ETS2-TruckersMP翻译器-v1.5.2.exe
+# 输出 → dist/ETS2-TruckersMP翻译器-v2.2.0.exe
 ```
 
 ---
@@ -236,7 +261,7 @@ python build_exe.py
 
 ### 🌐 Provider 配置（多 LLM 支持）
 
-> 💡 **v1.8.0 新增**：点击 **📦 预设** 按钮，从 20+ 内置供应商中一键选择，自动填入 API 地址和推荐模型，只需填写 API Key 即可。
+> 💡 点击 **📦 预设** 按钮，从 20+ 内置供应商中一键选择，自动填入 API 地址和推荐模型，只需填写 API Key。
 
 | ⚙️ 配置项 | 📝 说明 | 💡 示例 |
 |:---|:---|:---|
@@ -246,16 +271,17 @@ python build_exe.py
 | 🤖 **Model** | 模型名称 | `deepseek-chat` |
 | ✅ **Enabled** | 启用/禁用此 Provider | ☑ |
 
-> ⚠️ Endpoint 必须是完整 URL。使用预设功能可避免手动填写地址。
+> [!WARNING]
+> Endpoint 必须是完整 URL（含 `/chat/completions`），否则会返回 404。
 
 ### ⚙️ 其他配置
 
 | ⚙️ 配置项 | 📝 说明 | 💡 示例 |
 |:---|:---|:---|
-| 🔀 **翻译后端** | LLM / 百度 / LLM+百度混合 | `LLM + 百度监督` |
+| 🔀 **翻译后端** | LLM / 百度翻译 | `LLM` |
 | 🌐 **目标语言** | 翻译目标语言 | `简体中文` |
-| 🔤 **百度 APP ID** | 百度翻译 API 的 APP ID | `1234567899887654` |
-| 🔐 **百度 Secret** | 百度翻译 API 的密钥 | `xxxxxx` |
+| 🔤 **百度 APP ID** | 百度翻译 API 的 APP ID | `20260812000000000` |
+| 🔐 **百度 Secret** | 百度翻译 API 的密钥 | `xxxxxxxx` |
 | 🎨 **窗口透明度** | 0.10 ~ 1.00 | `0.80` |
 | 🔤 **字体大小** | 聊天显示字体大小 | `12` |
 | 📊 **最大消息数** | 窗口可见最大消息条数 | `50` |
@@ -270,7 +296,8 @@ python build_exe.py
 
 点击设置中的热键输入框 → 显示 **"按下组合键..."** → 直接按下键盘组合键 → 自动识别保存。
 
-> ⚠️ **绑定热键前请关闭 Caps Lock 大写锁定！**
+> [!WARNING]
+> 绑定热键前请关闭 Caps Lock 大写锁定！
 
 ---
 
@@ -309,8 +336,7 @@ python build_exe.py
 │  🧠 translator.py — 翻译引擎                                   │
 │  · LRU 缓存 1000 条 → 命中直接返回                             │
 │  · 批量模式：0.3s 窗口收集消息                                  │
-│  · 多 Provider 并行竞速 + 熔断回退                              │
-│  · 三种后端：LLM / 百度 / LLM+百度混合                          │
+│  · 多 Provider 轮转负载均衡 + 熔断回退                          │
 │  · 配置热重载：3 秒检测文件变化                                  │
 └──────────────────────────────────────────────────────────────┘
                               │
@@ -335,13 +361,12 @@ python build_exe.py
 ├── 🚀 main.py              # 入口、主控、设置对话框
 ├── ⚙️ config.py             # 配置模型、DPAPI 加密、JSON 读写
 ├── 📡 monitor.py           # TMP 聊天日志监控（增量轮询、正则解析、服务器识别）
-├── 🧠 translator.py        # 翻译引擎（多Provider并行、熔断、缓存、批量、混合语言拆分）
+├── 🧠 translator.py        # 翻译引擎（多Provider轮转、熔断、缓存、批量、混合语言拆分）
 ├── 🪟 overlay.py           # 显示窗口（毛玻璃悬浮窗、grid 布局、Win32 API、输入栏、热键）
 ├── 🪟 acrylic_helper.py    # Win32 亚克力/云母毛玻璃效果（Win11 Mica + Win10 Acrylic）
 ├── ⌨️ hotkey_manager.py     # 系统热键管理（RegisterHotKey + 消息窗口）
 ├── 📨 input_sender.py      # 键盘模拟（SendInput API、剪贴板）
 ├── 📋 tray_icon.py         # 系统托盘（纯 ctypes + Win32 API）
-
 ├── 🎨 settings_ui.py       # 设置 UI（Provider 预设选择、模型拉取、连通测试）
 ├── 📦 provider_presets.py  # 内置 20+ LLM 供应商预设模板
 ├── 📥 model_fetcher.py     # 模型列表拉取（/v1/models 端点探测）
@@ -350,10 +375,10 @@ python build_exe.py
 ├── 💬 message_display.py   # 消息渲染引擎
 ├── 📦 message_types.py     # 数据类（DisplayMessage / TranslationStats）
 ├── 📝 logger.py            # 日志模块（文件轮转 + 内存缓冲）
-├── 📄 requirements.txt     # Python 依赖（仅 httpx）
+├── 📄 requirements.txt     # Python 依赖
 ├── 🎨 icon.ico             # 程序图标
 └── 📦 dist/                # 构建输出
-    └── ETS2-TruckersMP翻译器-v2.0.0.exe
+    └── ETS2-TruckersMP翻译器-v2.2.0.exe
 ```
 
 ---
@@ -361,13 +386,13 @@ python build_exe.py
 ## ❓ FAQ · 常见问题
 
 <details>
-<summary>🔴 <b>翻译显示"[网络错误] 无法连接到 API 服务器"？</b></summary>
+<summary>🔴 <b>翻译显示"网络错误"无法连接到 API 服务器？</b></summary>
 
 > 检查 API Endpoint 地址是否正确。**必须包含完整路径**，如 `https://api.deepseek.com/v1/chat/completions`，只填 `https://api.deepseek.com/v1` 会导致 404。
 </details>
 
 <details>
-<summary>🔴 <b>翻译显示"[认证失败] API 密钥无效"？</b></summary>
+<summary>🔴 <b>翻译显示"认证失败"API 密钥无效？</b></summary>
 
 > 检查 API Key 是否正确填写，密钥是否过期。
 </details>
@@ -411,13 +436,13 @@ python build_exe.py
 <details>
 <summary>🟡 <b>如何把翻译好的文字发送到游戏？</b></summary>
 
-> 翻译完成后按复制热键（默认 Ctrl+C）→ 游戏打开聊天框粘贴（Ctrl+V）→ 按发送热键（默认 Enter）。
+> 翻译完成后按复制热键（默认 `Ctrl+C`）→ 游戏打开聊天框粘贴（`Ctrl+V`）→ 按发送热键（默认 `Enter`）。
 </details>
 
 <details>
 <summary>🟢 <b>百度翻译和 LLM 翻译有什么区别？</b></summary>
 
-> 百度翻译是专业神经机器翻译引擎，更准确更快，标准版每月 500 万字符免费。LLM 翻译更灵活但可能不够稳定。推荐使用 **LLM + 百度监督** 混合模式。
+> 百度翻译是专业神经机器翻译引擎，更准确更快，标准版每月 500 万字符免费。LLM 翻译更灵活但可能不够稳定。
 </details>
 
 <details>
@@ -429,21 +454,14 @@ python build_exe.py
 <details>
 <summary>🆕 <b>如何使用预设功能快速添加 Provider？</b></summary>
 
-> 设置 → API 配置 → 点击 **📦 预设** 按钮 → 搜索/选择供应商 → 自动填入地址和模型 → 只需填写 API Key → 保存。支持 20+ 国内外主流 LLM 供应商。
+> 设置 → API 配置 → 点击 **📦 预设** 按钮 → 搜索/选择供应商 → 自动填入地址和模型 → 只需填写 API Key → 保存。
 </details>
 
 <details>
-<summary>🆕 <b>为什么日志"删除"按钮点了没反应？</b></summary>
+<summary>🆕 <b>混合语言消息翻译不准怎么办？</b></summary>
 
-> v1.8.0 已修复此问题。更新到最新版本后，点击删除按钮会弹窗提示删除结果。如仍遇到问题，请检查 `文档\ETS2 Translator\logs\` 文件夹权限。
+> v1.8.0+ 已支持混合语言智能拆分：中文部分自动保留不动，只翻译非中文片段。例如 "你好 where are you" → "你好 你在哪里"。
 </details>
-
-<details>
-<summary>🆕 <b>聊天消息中夹杂中文和外语时，翻译不准怎么办？</b></summary>
-
-> v1.8.0 新增混合语言智能拆分：中文部分自动保留不动，只翻译非中文片段。例如 "你好 where are you" → "你好 你在哪里"。
-</details>
-
 
 ---
 
@@ -455,4 +473,8 @@ python build_exe.py
 
 <p align="center">
   本项目基于 <a href="LICENSE">MIT License</a> 开源 · 完全免费 · 可自由使用、修改和分发
+</p>
+
+<p align="center">
+  <sub>Made with ❤️ for the ETS2 TruckersMP community</sub>
 </p>
