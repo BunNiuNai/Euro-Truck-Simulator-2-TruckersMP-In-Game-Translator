@@ -8,8 +8,9 @@ import os
 import re
 import threading
 import time
+from collections import deque
 from dataclasses import dataclass
-from queue import Queue
+from queue import Queue, Full
 
 from config import get_documents_path
 from logger import get_logger
@@ -149,6 +150,8 @@ class ChatMonitor(threading.Thread):
         self._last_size = 0
         self.status = "未启动"
         self._seen = set()  # deduplication: hashes of recently seen messages
+        self._seen_order = deque()  # FIFO tracking for bounded eviction (evicted by while loop)
+        self._partial_line = b""  # buffer incomplete lines across read boundaries
 
     @property
     def _self_name(self) -> str | None:
@@ -206,12 +209,23 @@ class ChatMonitor(threading.Thread):
             if current_size <= self._last_size:
                 return
 
-            with open(self._log_path, "r", encoding="utf-8", errors="replace") as f:
+            # Binary mode — using byte offsets with text-mode seek() is undefined
+            # on Windows due to CRLF translation and UTF-8 multi-byte characters.
+            with open(self._log_path, "rb") as f:
                 f.seek(self._last_size)
-                new_data = f.read(current_size - self._last_size)
+                raw_data = f.read(current_size - self._last_size)
                 self._last_size = current_size
 
-            for line in new_data.splitlines():
+            # Decode after reading; buffer incomplete lines across read boundaries
+            new_data = (self._partial_line + raw_data).decode("utf-8", errors="replace")
+            self._partial_line = b""
+            lines = new_data.splitlines()
+            # If raw_data doesn't end with newline, buffer the last incomplete line
+            if raw_data and not raw_data.endswith(b"\n"):
+                if lines:
+                    self._partial_line = lines.pop().encode("utf-8")
+
+            for line in lines:
                 self_name = self._self_name
                 msg = parse_line(line, self_name)
                 if msg is None:
@@ -231,12 +245,17 @@ class ChatMonitor(threading.Thread):
                 if key in self._seen:
                     continue
                 self._seen.add(key)
+                self._seen_order.append(key)
                 if len(self._seen) > 500:
-                    self._seen.clear()  # periodic cleanup to avoid unbounded growth
+                    # Evict oldest entries (FIFO) instead of clearing everything
+                    while len(self._seen) > 500 and self._seen_order:
+                        old_key = self._seen_order.popleft()
+                        self._seen.discard(old_key)
                 try:
                     self.queue.put(msg, timeout=0.1)
-                except Exception:
-                    pass  # queue full, drop oldest — consumer will catch up
+                except Full:
+                    # Queue full — drop this message (consumer is backed up)
+                    pass
         except OSError:
             pass
 

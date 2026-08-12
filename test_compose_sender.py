@@ -100,7 +100,7 @@ class TestComposeSenderWaitConfirmation:
         t = threading.Thread(target=do_confirm, daemon=True)
         t.start()
         time.sleep(0.15)
-        self._append_line("Global", "12:00:00", "OtherPlayer", "hello world")
+        self._append_line("Global", "12:00:00", "TestPlayer", "hello world")
         t.join(timeout=3.0)
         assert result_holder[0] is True
 
@@ -110,7 +110,9 @@ class TestComposeSenderWaitConfirmation:
         )
         assert result is False
 
-    def test_skips_self_player(self):
+    def test_confirms_own_message_ignores_others(self):
+        """Confirmation triggers on own message. OtherPlayer's identical
+        text is ignored (false positive prevention)."""
         import threading
         result_holder = []
 
@@ -122,9 +124,11 @@ class TestComposeSenderWaitConfirmation:
         t = threading.Thread(target=do_confirm, daemon=True)
         t.start()
         time.sleep(0.15)
-        self._append_line("Global", "12:00:00", "TestPlayer", "hello world")
+        # OtherPlayer first — should NOT trigger confirmation
+        self._append_line("Global", "12:00:00", "OtherPlayer", "hello world")
         time.sleep(0.2)
-        self._append_line("Global", "12:00:01", "OtherPlayer", "hello world")
+        # Own message — this triggers confirmation
+        self._append_line("Global", "12:00:01", "TestPlayer", "hello world")
         t.join(timeout=3.0)
         assert result_holder[0] is True
 
@@ -140,7 +144,7 @@ class TestComposeSenderWaitConfirmation:
         t = threading.Thread(target=do_confirm, daemon=True)
         t.start()
         time.sleep(0.15)
-        self._append_line("Global", "12:00:00", "OtherPlayer", "hello world")
+        self._append_line("Global", "12:00:00", "TestPlayer", "hello world")
         t.join(timeout=3.0)
         assert result_holder[0] is True
 

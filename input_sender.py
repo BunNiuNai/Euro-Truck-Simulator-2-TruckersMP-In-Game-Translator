@@ -98,7 +98,7 @@ from win32_constants import vk_code as _vk_code
 
 
 def _send_key(vk: int, key_up: bool = False):
-    """Send a single keyboard input event."""
+    """Send a single keyboard input event. Returns True if SendInput succeeded."""
     flags = KEYEVENTF_KEYUP if key_up else 0
     inp = INPUT()
     inp.type = INPUT_KEYBOARD
@@ -107,7 +107,9 @@ def _send_key(vk: int, key_up: bool = False):
     inp.u.ki.dwFlags = flags
     inp.u.ki.time = 0
     inp.u.ki.dwExtraInfo = 0
-    ctypes.windll.user32.SendInput(1, ctypes.byref(inp), ctypes.sizeof(inp))
+    result = ctypes.windll.user32.SendInput(1, ctypes.byref(inp), ctypes.sizeof(inp))
+    if result == 0:
+        _debug_log(f"_send_key: SendInput returned 0 for VK={vk} (may be blocked by UIPI)")
 
 
 def _press_key(vk: int, hold_sec: float = 0.05):
@@ -193,24 +195,42 @@ def clipboard_set(text: str):
         _debug_log("clipboard_set: OpenClipboard FAILED after 5 attempts")
         return
 
+    # Count UTF-16 code units (not codepoints) for proper buffer sizing.
+    # A single emoji like 🙂 is 1 codepoint but 2 wchar_t units in UTF-16.
+    utf16_units = len(text.encode('utf-16-le')) // 2
+    alloc_size = (utf16_units + 1) * ctypes.sizeof(ctypes.c_wchar)
+
+    # Allocate memory FIRST, then empty clipboard — prevents data loss
+    # if GlobalAlloc fails (clipboard won't be emptied unnecessarily).
+    hmem = _kernel32.GlobalAlloc(2, alloc_size)  # GMEM_MOVEABLE
+    _debug_log(f"clipboard_set: GlobalAlloc returned {hmem}")
+    if not hmem:
+        _debug_log("clipboard_set: GlobalAlloc FAILED — clipboard NOT modified")
+        _user32.CloseClipboard()
+        return
+
+    pwsz = _kernel32.GlobalLock(hmem)
+    _debug_log(f"clipboard_set: GlobalLock returned {pwsz}")
+    if not pwsz:
+        _debug_log("clipboard_set: GlobalLock FAILED — clipboard NOT modified")
+        _kernel32.GlobalFree(hmem)
+        _user32.CloseClipboard()
+        return
+
+    # Write text into the allocated buffer using proper UTF-16 sizing
+    buf = (ctypes.c_wchar * (utf16_units + 1)).from_address(pwsz)
+    buf.value = text
+    _kernel32.GlobalUnlock(hmem)
+
+    # Now safe to empty clipboard and set new data
     ok = _user32.EmptyClipboard()
     _debug_log(f"clipboard_set: EmptyClipboard returned {ok}")
 
-    hmem = _kernel32.GlobalAlloc(2, (len(text) + 1) * 2)  # GMEM_MOVEABLE
-    _debug_log(f"clipboard_set: GlobalAlloc returned {hmem}")
-    if hmem:
-        pwsz = _kernel32.GlobalLock(hmem)
-        _debug_log(f"clipboard_set: GlobalLock returned {pwsz}")
-        if pwsz:
-            buf = (ctypes.c_wchar * (len(text) + 1)).from_address(pwsz)
-            buf.value = text
-            _kernel32.GlobalUnlock(hmem)
-            result = _user32.SetClipboardData(13, hmem)  # CF_UNICODETEXT
-            _debug_log(f"clipboard_set: SetClipboardData returned {result}")
-        else:
-            _debug_log("clipboard_set: GlobalLock FAILED")
-    else:
-        _debug_log("clipboard_set: GlobalAlloc FAILED")
+    result = _user32.SetClipboardData(13, hmem)  # CF_UNICODETEXT
+    _debug_log(f"clipboard_set: SetClipboardData returned {result}")
+    if not result:
+        _debug_log("clipboard_set: SetClipboardData FAILED — data may be lost")
+        _kernel32.GlobalFree(hmem)
 
     _user32.CloseClipboard()
     _debug_log("clipboard_set: CloseClipboard done")
@@ -229,16 +249,26 @@ def clipboard_get() -> str:
 
     try:
         handle = _user32.GetClipboardData(13)  # CF_UNICODETEXT
-        if handle:
-            pwsz = _kernel32.GlobalLock(handle)
-            try:
-                return ctypes.wstring_at(pwsz)
-            finally:
-                _kernel32.GlobalUnlock(handle)
+        if not handle:
+            return ""  # No CF_UNICODETEXT data on clipboard
+        pwsz = _kernel32.GlobalLock(handle)
+        if not pwsz:
+            return ""  # GlobalLock failed — avoid NULL dereference
+        try:
+            return ctypes.wstring_at(pwsz)
+        finally:
+            _kernel32.GlobalUnlock(handle)
     finally:
         _user32.CloseClipboard()
-    return ""
 
+
+# ---------------------------------------------------------------------------
+# Send sequence
+# ---------------------------------------------------------------------------
+
+# Centralized clipboard lock — prevents concurrent access from compose_sender
+# and ad_sender, which both call send_chat_message().
+_clipboard_lock = threading.Lock()
 
 # ---------------------------------------------------------------------------
 # Send sequence
@@ -248,14 +278,22 @@ def send_chat_message(text: str, hotkey: str, delay_ms: int = 500) -> str | None
     """Simulate keyboard to send a chat message in game.
 
     Sequence:
-      1. Press hotkey to open game chat
-      2. Set clipboard via Win32 API
-      3. Ctrl+V to paste
-      4. Enter to send
+      1. Save clipboard
+      2. Press hotkey to open game chat
+      3. Set clipboard via Win32 API
+      4. Ctrl+V to paste
+      5. Enter to send
+      6. Restore clipboard
 
     Args:
         delay_ms: wait time between keystrokes in ms (default 500ms)
     """
+    old_clip = None
+    try:
+        old_clip = clipboard_get()
+    except Exception:
+        pass
+
     try:
         delay_s = delay_ms / 1000.0
         _debug_log(f"send_chat_message: text={text!r}, hotkey={hotkey!r}")
@@ -269,7 +307,8 @@ def send_chat_message(text: str, hotkey: str, delay_ms: int = 500) -> str | None
         time.sleep(delay_s)
 
         _debug_log("send_chat_message: calling clipboard_set")
-        clipboard_set(text)
+        with _clipboard_lock:
+            clipboard_set(text)
         _debug_log("send_chat_message: clipboard_set done")
 
         _combo([VK_CONTROL, VK_V])
@@ -283,6 +322,13 @@ def send_chat_message(text: str, hotkey: str, delay_ms: int = 500) -> str | None
     except Exception as e:
         _debug_log(f"send_chat_message EXCEPTION: {e}")
         return f"发送异常: {e}"
+    finally:
+        if old_clip is not None:
+            try:
+                with _clipboard_lock:
+                    clipboard_set(old_clip)
+            except Exception:
+                _debug_log("send_chat_message: failed to restore clipboard")
 
 
 def run_send_sequence(text: str, hotkey: str):

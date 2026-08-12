@@ -61,7 +61,10 @@ class HotkeyManager:
     # ── Hotkey parsing ──
 
     def _parse_hotkey(self, hotkey_str: str) -> tuple[int, int]:
-        """Parse 'shift+y' into (mods_bitmask, virtual_key_code)."""
+        """Parse 'shift+y' into (mods_bitmask, virtual_key_code).
+        Returns (0, 0) for empty/invalid strings to prevent crashes."""
+        if not hotkey_str or not hotkey_str.strip():
+            return 0, 0
         parts = hotkey_str.lower().strip().split("+")
         mods = 0
         for p in parts[:-1]:
@@ -70,6 +73,8 @@ class HotkeyManager:
             elif p in ("ctrl", "control"): mods |= MOD_CONTROL
             elif p in ("alt"): mods |= MOD_ALT
         key = parts[-1].strip()
+        if not key:
+            return mods, 0
         vk = ord(key.upper()) if len(key) == 1 else 0
         return mods, vk
 
@@ -98,6 +103,7 @@ class HotkeyManager:
             self.root.after(0, self._focus_callback)
             return 0
         elif msg == WM_DESTROY:
+            self._hwnd = None  # prevent double DestroyWindow in cleanup
             user32.PostQuitMessage(0)
             return 0
         return user32.DefWindowProcW(hwnd, msg, wparam, lparam)
@@ -136,6 +142,7 @@ class HotkeyManager:
 
         atom = user32.RegisterClassExW(ctypes.byref(wc))
         if not atom:
+            self._running = False
             return
 
         self._hwnd = user32.CreateWindowExW(
@@ -144,9 +151,10 @@ class HotkeyManager:
             wintypes.HWND(-3), 0, hinst, 0,
         )
         if not self._hwnd:
+            self._running = False
             return
 
-        mods, vk = self._parse_hotkey(self.cfg.send_hotkey)
+        mods, vk = self._parse_hotkey_vk(self.cfg.send_hotkey)
         if vk != 0:
             ok = user32.RegisterHotKey(self._hwnd, self._hotkey_id, mods, vk)
             if not ok:
@@ -157,6 +165,7 @@ class HotkeyManager:
                 if not ok:
                     user32.DestroyWindow(self._hwnd)
                     self._hwnd = None
+                    self._running = False
                     return
 
         msg = wintypes.MSG()

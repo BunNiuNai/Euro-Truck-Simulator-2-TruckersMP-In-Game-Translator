@@ -99,15 +99,26 @@ def _maybe_encrypt(field: str, value: str) -> str:
     return value
 
 
+# Track fields that failed decryption so UI can prompt for re-entry
+_decrypt_failures: set[str] = set()
+
+
 def _maybe_decrypt(field: str, value: str) -> str:
-    """Decrypt value if it is encrypted. Returns empty on failure (not ciphertext)."""
+    """Decrypt value if it is encrypted.
+    On failure, returns the original encrypted value (NOT empty string)
+    to prevent save_config from permanently overwriting the real key.
+    """
     if not value:
         return value
     if _is_encrypted(value):
         try:
             return _dpapi_decrypt(value[len(_ENC_PREFIX):])
         except Exception:
-            return ""  # DPAPI key changed (e.g. new PC) — clear, user must re-enter
+            # DPAPI key changed (e.g. new PC / user profile change).
+            # Keep original value so it's not permanently lost.
+            # Caller can check _decrypt_failures to prompt for re-entry.
+            _decrypt_failures.add(field)
+            return value
     return value
 
 
@@ -118,13 +129,13 @@ def get_documents_path():
     HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Explorer\\User Shell Folders.
     Falls back to USERPROFILE\\Documents if registry lookup fails.
     """
+    key = None
     try:
         key = winreg.OpenKey(
             winreg.HKEY_CURRENT_USER,
             r"Software\Microsoft\Windows\CurrentVersion\Explorer\User Shell Folders"
         )
         path, _ = winreg.QueryValueEx(key, "Personal")
-        winreg.CloseKey(key)
         if path:
             # Expand any environment variables (e.g., %USERPROFILE%)
             path = os.path.expandvars(path)
@@ -133,9 +144,19 @@ def get_documents_path():
                 return path
     except (OSError, FileNotFoundError):
         pass
+    finally:
+        if key is not None:
+            try:
+                winreg.CloseKey(key)
+            except OSError:
+                pass
 
     # Fallback
-    return os.path.join(os.environ.get("USERPROFILE", os.environ.get("HOMEDRIVE", "C:") + os.environ.get("HOMEPATH", "")), "Documents")
+    return os.path.join(
+        os.environ.get("USERPROFILE", "") or
+        (os.environ.get("HOMEDRIVE", "C:") + os.environ.get("HOMEPATH", "")),
+        "Documents"
+    )
 
 
 DOCUMENTS_PATH = get_documents_path()
@@ -273,7 +294,10 @@ def _migrate_config_v2(data: dict) -> dict:
             "enabled": True,
         }]
 
-    from provider_presets import match_preset_from_endpoint
+    try:
+        from provider_presets import match_preset_from_endpoint
+    except ImportError:
+        match_preset_from_endpoint = lambda _: ""
     new_providers = []
     for i, p in enumerate(old_providers):
         endpoint = p.get("endpoint", "")
@@ -288,7 +312,7 @@ def _migrate_config_v2(data: dict) -> dict:
             "preset_id": preset_id,
             "icon": preset_id if preset_id else "",
             "api_format": "openai",
-            "weight": 100 - i,
+            "weight": max(1, 100 - i),
             "extra_headers": {},
             "extra_body": {},
             "timeout": 8,
@@ -297,37 +321,6 @@ def _migrate_config_v2(data: dict) -> dict:
     data["version"] = 2
     data["llm_providers"] = new_providers
 
-    # ── v2.1 migration: Baidu as provider ──
-    _backend = data.get("translation_backend", "llm")
-    _baidu_appid = data.get("baidu_appid", "")
-    _baidu_secret = data.get("baidu_secret", "")
-
-    if _baidu_appid and _baidu_secret:
-        # Check if a Baidu provider already exists
-        has_baidu = any(
-            p.get("api_format") == "baidu" for p in data.get("llm_providers", [])
-        )
-        if not has_baidu:
-            baidu_provider = {
-                "id": "baidu",
-                "label": "百度翻译",
-                "endpoint": "https://fanyi-api.baidu.com/api/trans/vip/translate",
-                "api_key": "",
-                "model": "通用翻译",
-                "enabled": True,
-                "preset_id": "baidu",
-                "icon": "baidu",
-                "api_format": "baidu",
-                "weight": 100,
-                "extra_headers": {},
-                "extra_body": {
-                    "baidu_appid": _baidu_appid,
-                    "baidu_secret": _baidu_secret,
-                },
-                "timeout": 5,
-            }
-            data["llm_providers"].append(baidu_provider)
-
     # Clean up deprecated fields
     data.pop("translation_backend", None)
     data.pop("provider_mode", None)
@@ -335,22 +328,93 @@ def _migrate_config_v2(data: dict) -> dict:
     return data
 
 
+def _migrate_config_v21(data: dict) -> None:
+    """v2.0 → v2.1 migration: convert Baidu flat fields to a provider.
+    MUST run AFTER top-level decryption so extra_body gets plaintext values."""
+    _baidu_appid = data.get("baidu_appid", "")
+    _baidu_secret = data.get("baidu_secret", "")
+    # Clean these from merged data (set to empty, not pop, so AppConfig ctor still works)
+    data["baidu_appid"] = ""
+    data["baidu_secret"] = ""
+
+    if not _baidu_appid or not _baidu_secret:
+        return
+
+    # Check if a Baidu provider already exists
+    has_baidu = any(
+        p.get("api_format") == "baidu" for p in data.get("llm_providers", [])
+    )
+    if has_baidu:
+        return
+
+    baidu_provider = {
+        "id": "baidu",
+        "label": "百度翻译",
+        "endpoint": "https://fanyi-api.baidu.com/api/trans/vip/translate",
+        "api_key": "",
+        "model": "通用翻译",
+        "enabled": True,
+        "preset_id": "baidu",
+        "icon": "baidu",
+        "api_format": "baidu",
+        "weight": 100,
+        "extra_headers": {},
+        "extra_body": {
+            "baidu_appid": _baidu_appid,
+            "baidu_secret": _baidu_secret,
+        },
+        "timeout": 5,
+    }
+    data.setdefault("llm_providers", []).append(baidu_provider)
+
+
+def _decrypt_provider_extra_body(provider: dict) -> None:
+    """Decrypt sensitive fields inside a provider's extra_body dict."""
+    extra = provider.get("extra_body")
+    if not isinstance(extra, dict):
+        return
+    for field in _SECRET_FIELDS:
+        if field in extra and isinstance(extra[field], str) and _is_encrypted(extra[field]):
+            extra[field] = _maybe_decrypt(field, extra[field])
+
+
 def ensure_config_dir():
     os.makedirs(CONFIG_DIR, exist_ok=True)
 
 
+# Fallback config path (used when primary Documents path is unwritable)
+_FALLBACK_CONFIG_DIR = os.path.join(
+    os.environ.get("LOCALAPPDATA", "") or os.environ.get("USERPROFILE", "."),
+    "ETS2 Translator"
+)
+_FALLBACK_CONFIG_PATH = os.path.join(_FALLBACK_CONFIG_DIR, "config.json")
+
+
 def load_config():
     ensure_config_dir()
-    if not os.path.exists(CONFIG_PATH):
+
+    # Check fallback path if primary doesn't exist
+    config_path = CONFIG_PATH
+    if not os.path.exists(config_path) and os.path.exists(_FALLBACK_CONFIG_PATH):
+        # Config exists at fallback location but not primary — use fallback
+        config_path = _FALLBACK_CONFIG_PATH
+
+    if not os.path.exists(config_path):
         cfg = AppConfig()
         save_config(cfg)
         return cfg
 
     try:
-        with open(CONFIG_PATH, "r", encoding="utf-8") as f:
+        with open(config_path, "r", encoding="utf-8") as f:
             data = json.load(f)
-    except (json.JSONDecodeError, OSError):
-        # Config file corrupted — start fresh with defaults
+    except (json.JSONDecodeError, OSError) as e:
+        # Config file corrupted — back it up before replacing with defaults
+        import time as _time
+        backup_path = config_path + f".corrupted.{_time.strftime('%Y%m%d-%H%M%S')}"
+        try:
+            os.rename(config_path, backup_path)
+        except OSError:
+            pass
         cfg = AppConfig()
         save_config(cfg)
         return cfg
@@ -360,15 +424,21 @@ def load_config():
     data = _migrate_config_v2(data)
     # Merge loaded data over defaults (allow partial configs)
     merged = {**defaults, **data}
-    # Decrypt sensitive fields
+    # Decrypt sensitive top-level fields (must run BEFORE Baidu migration to
+    # ensure decrypted values are embedded into provider extra_body)
     for field in _SECRET_FIELDS:
         if field in merged and isinstance(merged[field], str):
             merged[field] = _maybe_decrypt(field, merged[field])
+
+    # Run v2.1 Baidu migration AFTER decryption so extra_body gets plaintext
+    _migrate_config_v21(merged)
 
     # Decrypt sensitive fields in providers
     for provider in merged.get("llm_providers", []):
         if "api_key" in provider and isinstance(provider["api_key"], str):
             provider["api_key"] = _maybe_decrypt("api_key", provider["api_key"])
+        # Also decrypt baidu_secret in extra_body if present
+        _decrypt_provider_extra_body(provider)
 
     # Migration: if llm_providers is empty but old api_endpoint is set, create one provider
     if not merged.get("llm_providers") and merged.get("api_endpoint"):
@@ -386,22 +456,31 @@ def load_config():
 def save_config(cfg: AppConfig):
     ensure_config_dir()
     data = asdict(cfg)
-    # Encrypt sensitive fields before writing
+    # Encrypt sensitive top-level fields before writing
     for field in _SECRET_FIELDS:
         if field in data and isinstance(data[field], str):
             data[field] = _maybe_encrypt(field, data[field])
 
-    # Encrypt sensitive fields in providers
+    # Encrypt sensitive fields in providers (api_key + extra_body)
     for provider in data.get("llm_providers", []):
         if "api_key" in provider and isinstance(provider["api_key"], str):
             provider["api_key"] = _maybe_encrypt("api_key", provider["api_key"])
+        # Encrypt baidu_secret inside extra_body if present
+        _encrypt_provider_extra_body(provider)
 
     content = json.dumps(data, indent=2, ensure_ascii=False)
-    try:
-        with open(CONFIG_PATH, "w", encoding="utf-8") as f:
-            f.write(content)
-    except PermissionError:
-        _atomic_save(content)
+    # Always use atomic save to prevent corruption from hot-reload races
+    _atomic_save(content)
+
+
+def _encrypt_provider_extra_body(provider: dict) -> None:
+    """Encrypt sensitive fields inside a provider's extra_body dict."""
+    extra = provider.get("extra_body")
+    if not isinstance(extra, dict):
+        return
+    for field in _SECRET_FIELDS:
+        if field in extra and isinstance(extra[field], str):
+            extra[field] = _maybe_encrypt(field, extra[field])
 
 
 def _atomic_save(content: str):
@@ -429,7 +508,10 @@ def _atomic_save(content: str):
 
 
 def _fallback_save(content: str):
-    alt_dir = os.path.join(os.environ.get("LOCALAPPDATA", os.environ["USERPROFILE"]), "ETS2 Translator")
+    alt_dir = os.path.join(
+        os.environ.get("LOCALAPPDATA", "") or os.environ.get("USERPROFILE", "."),
+        "ETS2 Translator"
+    )
     os.makedirs(alt_dir, exist_ok=True)
     alt_path = os.path.join(alt_dir, "config.json")
     with open(alt_path, "w", encoding="utf-8") as f:

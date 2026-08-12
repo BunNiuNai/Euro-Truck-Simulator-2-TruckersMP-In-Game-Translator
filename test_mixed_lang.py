@@ -96,7 +96,7 @@ class TestSplitMixedText:
         segments = split_mixed_text("안녕 hello 안녕", "ko")
         assert len(segments) == 3
         assert segments[0] == ("안녕", True)
-        assert segments[1] == ("hello", False)
+        assert segments[1] == (" hello ", False)  # whitespace between script changes preserved
         assert segments[2] == ("안녕", True)
 
     def test_japanese_target_japanese_kept(self):

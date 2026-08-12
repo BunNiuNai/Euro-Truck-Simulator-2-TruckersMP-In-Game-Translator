@@ -13,7 +13,7 @@ MAX_LOG_FILES = 7
 MAX_FILE_SIZE = 2 * 1024 * 1024  # 2MB
 BUFFER_SIZE = 500
 
-_LEVEL_LABEL = {"INFO": "INFO", "WARN": "WARN", "ERROR": "ERROR"}
+_LEVEL_LABEL = {"INFO": "INFO", "WARN": "WARN", "ERROR": "ERROR", "DEBUG": "DEBUG"}
 
 
 def _get_default_log_dir() -> str:
@@ -35,7 +35,10 @@ class Logger:
         self._lock = threading.Lock()
         self._file = None
         self._current_date = ""  # track date for midnight rollover
-        os.makedirs(self._log_dir, exist_ok=True)
+        try:
+            os.makedirs(self._log_dir, exist_ok=True)
+        except OSError:
+            pass  # log directory unavailable — logging will be memory-only
         self._cleanup_old_logs()
 
     # --- file management ---
@@ -136,11 +139,13 @@ class Logger:
             return
         try:
             if os.path.getsize(path) > self._max_size:
+                # Close file handle first — os.rename fails on Windows if file is open
+                self._close_file()
                 base = path.replace(".log", "")
                 seq = 1
                 while os.path.exists(f"{base}_{seq}.log"):
                     seq += 1
-                os.rename(path, f"{base}_{seq}.log")
+                os.replace(path, f"{base}_{seq}.log")  # os.replace is atomic, handles existing dest
         except OSError:
             pass
 
@@ -148,7 +153,7 @@ class Logger:
 
     def _log(self, tag: str, level: str, message: str) -> None:
         ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        line = f"{ts} [{tag}] [{_LEVEL_LABEL[level]}] {message}"
+        line = f"{ts} [{tag}] [{_LEVEL_LABEL.get(level, level)}] {message}"
 
         with self._lock:
             self._buffer.append(line)

@@ -20,17 +20,10 @@ _SINGLE_MUTEX_NAME = "Global\\ETS2_Chat_Translator_SingleInstance"
 
 
 def _ensure_single_instance():
-    """Create a named Windows mutex. If it already exists, bring the existing
-    window to front and exit this process. Returns True if this is the first instance."""
+    """Create a named Windows mutex. If it already exists, alert and exit.
+    Returns True if this is the first instance."""
     ctypes.windll.kernel32.CreateMutexW(None, True, _SINGLE_MUTEX_NAME)
     if ctypes.windll.kernel32.GetLastError() == 183:  # ERROR_ALREADY_EXISTS
-        from logger import get_logger
-        log = get_logger()
-        if log:
-            log.warn("SYS", "检测到重复实例，已退出")
-        # Find and restore the existing window
-        hwnd = ctypes.windll.user32.FindWindowW(None, None)
-        # Generic approach: just alert and exit
         ctypes.windll.user32.MessageBoxW(0,
             "ETS2 聊天翻译器已经在运行中。\n请查看系统托盘图标。", "ETS2 Translator", 0x40)
         return False
@@ -228,8 +221,13 @@ class App:
             self.tray = None
         self.monitor.stop()
         self.translator.stop()
-        import time
-        time.sleep(0.2)
+        # Join threads with timeout instead of unsafe sleep
+        for t, name in [(self.monitor, "monitor"), (self.translator, "translator")]:
+            t.join(timeout=5.0)
+            if t.is_alive():
+                log = get_logger()
+                if log:
+                    log.warn("SYS", f"{name} 线程未能在 5 秒内退出")
         self.overlay.root.destroy()
 
     def _switch_mode(self):
@@ -267,6 +265,7 @@ class HotkeyCapture(tk.Frame):
     def __init__(self, parent, hotkey_str: str = "", **kw):
         super().__init__(parent, **kw)
         self._hotkey = hotkey_str
+        self._capturing = False  # must be initialized before any event handlers fire
         self._label = tk.Label(self, text=self._fmt(hotkey_str),
                                bg="#2d2d30", fg="#cccccc", relief=tk.FLAT,
                                font=("Microsoft YaHei", 10), padx=12, pady=5,
@@ -1054,13 +1053,11 @@ class SettingsDialog:
         self.ad_log_text.configure(state=tk.DISABLED)
         self.ad_log_text.see(tk.END)
 
-    def _ad_send_current(self):
-        """后台线程: 发送当前消息到游戏."""
-        text = self._ad_message_areas[self._ad_current_index].get("1.0", tk.END).strip()
+    def _ad_send_current(self, text: str, idx: int):
+        """后台线程: 发送当前消息到游戏. text is read on main thread first."""
         if not text:
             return
         from input_sender import send_chat_message
-        idx = self._ad_current_index
         preview = text[:30] + "..." if len(text) > 30 else text
         err = send_chat_message(text, "y", delay_ms=500)
         if err:
@@ -1075,7 +1072,11 @@ class SettingsDialog:
         self.ad_remaining_label.config(text=str(self._ad_countdown_seconds))
         if self._ad_countdown_seconds <= 0:
             import threading
-            threading.Thread(target=self._ad_send_current, daemon=True).start()
+            # Read text on MAIN THREAD before spawning background thread
+            # (Tkinter is not thread-safe — must not access widgets from other threads)
+            text = self._ad_message_areas[self._ad_current_index].get("1.0", tk.END).strip()
+            idx = self._ad_current_index
+            threading.Thread(target=self._ad_send_current, args=(text, idx), daemon=True).start()
             self._ad_advance_index()
             self.top.after(0, lambda: self._ad_highlight(self._ad_current_index))
             self._ad_countdown_seconds = self._ad_total_seconds
@@ -1219,6 +1220,7 @@ class SettingsDialog:
             self.overlay._apply_mode()
 
     def _on_close(self):
+        self._ad_stop()  # Cancel any pending ad timer callbacks
         if self.overlay:
             self.overlay.set_opacity(self._orig_opacity)
             if self._orig_mode != self.mode_var.get():
@@ -1485,31 +1487,38 @@ class SettingsDialog:
 
 
 def main():
-    if not _ensure_single_instance():
-        sys.exit(0)
+    try:
+        if not _ensure_single_instance():
+            sys.exit(0)
 
-    app = App()
-    need_setup = False
-    providers = [p for p in app.cfg.llm_providers if p.get("enabled", True)]
-    if not providers:
-        need_setup = True
-    else:
-        for p in providers:
-            if p.get("api_format") == "baidu":
-                extra = p.get("extra_body", {})
-                if not extra.get("baidu_appid") and not p.get("baidu_appid"):
-                    need_setup = True
-                    break
-            else:
-                if not p.get("api_key"):
-                    need_setup = True
-                    break
+        app = App()
+        need_setup = False
+        providers = [p for p in app.cfg.llm_providers if p.get("enabled", True)]
+        if not providers:
+            need_setup = True
+        else:
+            for p in providers:
+                if p.get("api_format") == "baidu":
+                    extra = p.get("extra_body", {})
+                    if not extra.get("baidu_appid") and not p.get("baidu_appid"):
+                        need_setup = True
+                        break
+                else:
+                    if not p.get("api_key"):
+                        need_setup = True
+                        break
 
-    if need_setup:
-        app.overlay.root.after(500, app._open_settings)
-    else:
-        app.overlay.root.after(500, app._startup_check)
-    app.run()
+        if need_setup:
+            app.overlay.root.after(500, app._open_settings)
+        else:
+            app.overlay.root.after(500, app._startup_check)
+        app.run()
+    except Exception as e:
+        import traceback
+        ctypes.windll.user32.MessageBoxW(0,
+            f"ETS2 翻译器启动失败:\n\n{e}\n\n{traceback.format_exc()}",
+            "ETS2 Translator Error", 0x10)
+        sys.exit(1)
 
 
 if __name__ == "__main__":

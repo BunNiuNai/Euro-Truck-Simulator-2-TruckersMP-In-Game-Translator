@@ -370,9 +370,11 @@ class OverlayWindow:
         except Exception as e:
             log = get_logger()
             if log:
-                log.warn("SYS", f"亚克力效果失败，回退到半透明: {e}")
-        # Fallback: use Tkinter -alpha
-        self.root.attributes("-alpha", self.cfg.window_opacity)
+                log.warn("SYS", f"亚克力效果失败: {e}")
+        # Fallback: use opaque window (NOT -alpha — that causes ghosting on layered windows).
+        # The window will be solid black which still looks acceptable.
+        self._acrylic_applied = True  # prevent retries that cause flicker
+        self.root.attributes("-alpha", 1.0)
 
     # ═══════════════════════════════════════════════════════════════
     #  Window mode, position, corners
@@ -597,30 +599,32 @@ class OverlayWindow:
 
     def _sync_display(self):
         """Incrementally sync text widget from new messages."""
-        self.text.configure(state=tk.NORMAL)
-        new_total = len(self._messages)
+        try:
+            self.text.configure(state=tk.NORMAL)
+            new_total = len(self._messages)
 
-        if new_total < self._displayed_count:
-            self.text.delete("1.0", tk.END)
-            self._displayed_count = 0
+            if new_total < self._displayed_count:
+                self.text.delete("1.0", tk.END)
+                self._displayed_count = 0
 
-        insert_pos = tk.END
-        for i in range(self._displayed_count, new_total):
-            entry = self._messages[i]
-            player, orig, trans, is_self, detected_lang, ts, is_sys = entry
-            self._insert_one_at(insert_pos, player, orig, trans, is_self,
-                                detected_lang, ts, is_sys)
+            insert_pos = tk.END
+            for i in range(self._displayed_count, new_total):
+                entry = self._messages[i]
+                player, orig, trans, is_self, detected_lang, ts, is_sys = entry
+                self._insert_one_at(insert_pos, player, orig, trans, is_self,
+                                    detected_lang, ts, is_sys)
 
-        self._displayed_count = new_total
+            self._displayed_count = new_total
 
-        # Trim overflow
-        max_lines = self.cfg.max_messages * 4  # each message is up to 4 lines
-        total = int(self.text.index("end-1c").split(".")[0])
-        if total > max_lines:
-            self.text.delete("1.0", f"{total - max_lines + 1}.0")
+            # Trim overflow
+            max_lines = self.cfg.max_messages * 4  # each message is up to 4 lines
+            total = int(self.text.index("end-1c").split(".")[0])
+            if total > max_lines:
+                self.text.delete("1.0", f"{total - max_lines + 1}.0")
 
-        self.text.configure(state=tk.DISABLED)
-        self.text.see(tk.END)
+            self.text.see(tk.END)
+        finally:
+            self.text.configure(state=tk.DISABLED)
 
     def _insert_one_at(self, pos, player: str, orig: str, trans: str,
                        is_self: bool, detected_lang: str = "",
@@ -794,7 +798,7 @@ class OverlayWindow:
                 if combo and not was_down:
                     self.root.after(0, self._focus_send_entry)
                 was_down = combo
-                threading.Event().wait(0.05)
+                time.sleep(0.05)
 
         t = threading.Thread(target=poller, daemon=True)
         t.start()
@@ -1004,6 +1008,7 @@ class OverlayWindow:
 
     def set_font_size(self, size: int):
         self.cfg.font_size = size
+        self.text.configure(font=("Microsoft YaHei", size))  # base font
         self.send_entry.configure(font=("Microsoft YaHei", size))
         self._setup_text_tags()
 

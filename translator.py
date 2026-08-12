@@ -143,18 +143,25 @@ def split_mixed_text(text: str, target_lang: str) -> list[tuple[str, bool]]:
         elif is_target == current_is_target:
             current_chars.append(ch)
         else:
-            # Script boundary — flush current segment
-            segment = "".join(current_chars).strip()
-            if segment:
+            # Script boundary — flush current segment preserving internal whitespace
+            segment = "".join(current_chars)
+            if segment.strip():
                 result.append((segment, current_is_target))
             current_chars = [ch]
             current_is_target = is_target
 
     # Flush last segment
     if current_chars:
-        segment = "".join(current_chars).strip()
-        if segment:
+        segment = "".join(current_chars)
+        if segment.strip():
             result.append((segment, current_is_target))
+
+    # Strip leading whitespace from first segment and trailing from last segment
+    if result:
+        first_seg, first_flag = result[0]
+        result[0] = (first_seg.lstrip(), first_flag)
+        last_seg, last_flag = result[-1]
+        result[-1] = (last_seg.rstrip(), last_flag)
 
     return result
 
@@ -414,8 +421,11 @@ class Translator(threading.Thread):
                 result = self._call_api(combined)
                 parts = [p.strip() for p in result.split(BATCH_SEPARATOR)]
                 for i, msg in enumerate(batch):
-                    trans = parts[i] if i < len(parts) else msg.text
-                    self._cache.put(msg.text, trans)
+                    if i < len(parts):
+                        trans = parts[i]
+                        self._cache.put(msg.text, trans)  # only cache real translations
+                    else:
+                        trans = msg.text  # fallback — do NOT cache, let retry happen
                     detected = detect_language(msg.text)
                     self.out_queue.put(DisplayMessage(
                         player_name=msg.player_name,
@@ -687,13 +697,8 @@ class Translator(threading.Thread):
         return data["choices"][0]["message"]["content"].strip()
 
     def _should_skip(self, text: str) -> bool:
-        # Skip messages already in the target language
-        if self.cfg.target_language.startswith("zh"):
-            cjk = len(_CJK_RE.findall(text))
-            alpha = len(_ALPHA_RE.findall(text))
-            if cjk > alpha and cjk > len(text) * 0.3:
-                return True
-        return False
+        """Skip messages already in the target language (all supported languages)."""
+        return _should_skip_internal(text, self.cfg.target_language)
 
     def _format_error(self, exc: Exception) -> str:
         if isinstance(exc, httpx.ConnectError):
@@ -939,7 +944,10 @@ def translate_via_baidu(appid: str, secret: str, text: str, to_lang: str = "zh")
     if "error_code" in data:
         err_msg = data.get("error_msg", data["error_code"])
         raise Exception(f"百度翻译错误 {data['error_code']}: {err_msg}")
-    return data["trans_result"][0]["dst"]
+    trans_result = data.get("trans_result")
+    if not trans_result or not isinstance(trans_result, list) or len(trans_result) == 0:
+        raise Exception("百度翻译返回空结果")
+    return trans_result[0]["dst"]
 
 
 def test_baidu_connection(appid: str, secret: str) -> tuple:

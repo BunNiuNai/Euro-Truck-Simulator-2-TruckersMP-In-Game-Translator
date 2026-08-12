@@ -174,6 +174,7 @@ class ProviderEditPanel(tk.Frame):
 
     def load_provider(self, index: int, provider: dict):
         self._provider_index = index
+        self._original_provider = provider  # preserve non-form fields for gather
         self._fields["label_entry"].delete(0, tk.END)
         self._fields["label_entry"].insert(0, provider.get("label", ""))
         self._fields["endpoint_entry"].delete(0, tk.END)
@@ -213,19 +214,27 @@ class ProviderEditPanel(tk.Frame):
             timeout = int(self._fields["timeout_entry"].get().strip() or "8")
         except ValueError:
             timeout = 8
+        # Preserve non-form fields from the original provider (e.g. preset_id, api_format,
+        # extra_headers, extra_body, icon, id). These would otherwise be silently dropped.
+        # However, if the endpoint was manually changed, detach from the preset to avoid
+        # displaying wrong icon/label for what is effectively a different provider.
+        orig = getattr(self, '_original_provider', {})
+        new_endpoint = self._fields["endpoint_entry"].get().strip()
+        orig_endpoint = orig.get("endpoint", "")
+        endpoint_changed = new_endpoint and orig_endpoint and new_endpoint != orig_endpoint
         return {
-            "id": "",
+            "id": "" if endpoint_changed else orig.get("id", ""),
             "label": self._fields["label_entry"].get().strip(),
-            "endpoint": self._fields["endpoint_entry"].get().strip(),
+            "endpoint": new_endpoint,
             "api_key": self._fields["key_entry"].get().strip(),
             "model": self._model_entry.get().strip(),
-            "enabled": True,
-            "preset_id": "",
-            "icon": "",
-            "api_format": "openai",
+            "enabled": orig.get("enabled", True),
+            "preset_id": "" if endpoint_changed else orig.get("preset_id", ""),
+            "icon": "" if endpoint_changed else orig.get("icon", ""),
+            "api_format": orig.get("api_format", "openai"),
             "weight": weight,
-            "extra_headers": {},
-            "extra_body": {},
+            "extra_headers": orig.get("extra_headers", {}),
+            "extra_body": orig.get("extra_body", {}),
             "timeout": timeout,
         }
 
@@ -298,9 +307,9 @@ class PresetSelectorDialog:
 
         def _on_mousewheel(event):
             self._canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
-        self._canvas.bind_all("<MouseWheel>", _on_mousewheel)
+        self._canvas.bind("<MouseWheel>", _on_mousewheel)
         self.top.bind("<Destroy>",
-            lambda e: self._canvas.unbind_all("<MouseWheel>"))
+            lambda e: self._canvas.unbind("<MouseWheel>"))
 
         # ── Build preset cards by category ──
         self._preset_cards: list[tuple[tk.Frame, ProviderPreset]] = []
@@ -487,9 +496,9 @@ class ProviderListPanel(tk.Frame):
         def _on_mousewheel(event):
             self._canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
         self._canvas.bind("<Enter>",
-            lambda e: self._canvas.bind_all("<MouseWheel>", _on_mousewheel))
+            lambda e: self._canvas.bind("<MouseWheel>", _on_mousewheel))
         self._canvas.bind("<Leave>",
-            lambda e: self._canvas.unbind_all("<MouseWheel>"))
+            lambda e: self._canvas.unbind("<MouseWheel>"))
 
         # Add button
         add_btn = tk.Label(self, text="+ 添加 Provider", bg=Theme.ACCENT,

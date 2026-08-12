@@ -86,18 +86,29 @@ class ComposeSender:
     # -- internal --
 
     def _do_execute(self, english: str) -> SendResult:
-        old_clip = clipboard_get()
+        old_clip = None
+        try:
+            old_clip = clipboard_get()
+        except Exception:
+            pass  # clipboard read failed — proceed without restore
 
-        err = send_chat_message(english, self.cfg.chat_hotkey)
-        if err:
-            clipboard_set(old_clip)
-            log = get_logger()
-            if log:
-                log.error("SEND", f"发送失败: {err}")
-            return SendResult.FAIL_SEND
+        try:
+            err = send_chat_message(english, self.cfg.chat_hotkey)
+            if err:
+                log = get_logger()
+                if log:
+                    log.error("SEND", f"发送失败: {err}")
+                return SendResult.FAIL_SEND
+        finally:
+            # Restore clipboard IMMEDIATELY after send, not after confirmation.
+            # Holding clipboard during 2.5s confirmation destroys user's copy operations.
+            if old_clip is not None:
+                try:
+                    clipboard_set(old_clip)
+                except Exception:
+                    pass
 
         confirmed = self._wait_confirmation(english, timeout=2.5)
-        clipboard_set(old_clip)
 
         log = get_logger()
         if log:
@@ -153,10 +164,13 @@ class ComposeSender:
                         m = _CHAT_RE.match(line)
                         if m:
                             msg_text = m.group("text")
-                            msg_player = m.group("player")
+                            msg_player = m.group("player").strip()
                             if _normalize(msg_text) == normalized:
-                                if player_name and msg_player == player_name:
-                                    continue  # skip self
+                                # Confirm only if the speaker IS the local player.
+                                # Skip messages where speaker doesn't match (false positive).
+                                if player_name:
+                                    if msg_player.lower() != player_name.lower():
+                                        continue  # someone else said the same text
                                 return True
                     else:
                         time.sleep(0.08)
