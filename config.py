@@ -170,16 +170,22 @@ def get_receive_prompt() -> str:
     return prompt
 
 
-def get_send_prompt() -> str:
-    """Get the Chinese→English translation prompt."""
-    prompt = load_prompt("send_prompt.txt")
-    if not prompt:
-        return (
-            "You are a translator for ETS2/TruckersMP in-game chat. "
-            "Translate Chinese into natural, accurate English that a real gamer would type. "
-            "Never summarize, never omit, never add. Output ONLY the English translation."
-        )
-    return prompt
+def get_send_prompt(target_lang: str = "en") -> str:
+    """Get the send translation prompt for a specific target language.
+    Loads from prompts/send/{target_lang}.txt, falls back to English."""
+    prompt = load_prompt(f"send/{target_lang}.txt")
+    if prompt:
+        return prompt
+    # Fallback: try English
+    prompt = load_prompt("send/en.txt")
+    if prompt:
+        return prompt
+    # Hard fallback
+    return (
+        "You are a translator for ETS2/TruckersMP in-game chat. "
+        "Translate Chinese into natural, accurate English that a real gamer would type. "
+        "Never summarize, never omit, never add. Output ONLY the English translation."
+    )
 
 
 DEFAULT_SYSTEM_PROMPT = get_receive_prompt()

@@ -781,14 +781,7 @@ def test_connection(endpoint: str, api_key: str, model: str) -> tuple:
         return False, f"连接失败: {e}"
 
 
-SEND_SYSTEM_PROMPT = get_send_prompt()
-
-# Language display name mapping (Chinese names)
-_LANG_DISPLAY_NAMES: dict[str, str] = {
-    "zh-CN": "简体中文", "en": "英语", "ja": "日语", "ko": "韩语",
-    "fr": "法语", "de": "德语", "es": "西班牙语",
-    "ru": "俄语", "pt": "葡萄牙语", "it": "意大利语",
-}
+# Send prompts are loaded per-language from prompts/send/{lang}.txt
 
 
 def _lang_code_to_baidu(lang_code: str) -> str:
@@ -820,14 +813,14 @@ def _should_skip_internal(text: str, target_lang: str) -> bool:
 
 def _call_single_provider(p: dict, text: str, target_lang: str, cfg: AppConfig) -> str:
     """Call a single LLM provider for send translation."""
-    target_name = _LANG_DISPLAY_NAMES.get(target_lang, "英语")
+    prompt = get_send_prompt(target_lang)
     ep = p["endpoint"].strip()
     if not ep.startswith(("http://", "https://")):
         ep = "https://" + ep
     payload = {
         "model": p["model"],
         "messages": [
-            {"role": "system", "content": SEND_SYSTEM_PROMPT.replace("{target_language}", target_name)},
+            {"role": "system", "content": prompt},
             {"role": "user", "content": text},
         ],
         "temperature": 0.3,
@@ -863,14 +856,14 @@ def _call_single_provider(p: dict, text: str, target_lang: str, cfg: AppConfig) 
 
 def _legacy_send_translate(cfg: AppConfig, text: str, target_lang: str) -> str:
     """Legacy single-API fallback for send translation (no providers configured)."""
-    target_name = _LANG_DISPLAY_NAMES.get(target_lang, "英语")
+    prompt = get_send_prompt(target_lang)
     endpoint = cfg.api_endpoint.strip()
     if not endpoint.startswith(("http://", "https://")):
         endpoint = "https://" + endpoint
     payload = {
         "model": cfg.api_model,
         "messages": [
-            {"role": "system", "content": SEND_SYSTEM_PROMPT.replace("{target_language}", target_name)},
+            {"role": "system", "content": prompt},
             {"role": "user", "content": text},
         ],
         "temperature": 0.3,
