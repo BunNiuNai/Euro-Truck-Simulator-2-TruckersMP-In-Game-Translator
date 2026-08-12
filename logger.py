@@ -35,7 +35,6 @@ class Logger:
         self._lock = threading.Lock()
         self._file = None
         self._current_date = ""  # track date for midnight rollover
-        self._last_cleanup = 0.0  # throttle cleanup to once per hour
         os.makedirs(self._log_dir, exist_ok=True)
         self._cleanup_old_logs()
 
@@ -73,7 +72,7 @@ class Logger:
         try:
             cutoff = datetime.now().timestamp() - 7 * 86400
             for f in os.listdir(self._log_dir):
-                if (f.startswith("translator_") or f.startswith("messages_")) and f.endswith(".log"):
+                if f.startswith("translator_") and f.endswith(".log"):
                     fpath = os.path.join(self._log_dir, f)
                     try:
                         if os.path.getmtime(fpath) < cutoff:
@@ -118,14 +117,6 @@ class Logger:
         with self._lock:
             deleted, _errors = self._delete_log_files("translator_")
             self._buffer.clear()
-        return deleted
-
-    def delete_message_logs(self) -> int:
-        """Delete all message log files. Returns count of deleted files.
-        Message log files are not held open (written with 'with' block),
-        so no file handle management is needed.
-        """
-        deleted, _errors = self._delete_log_files("messages_")
         return deleted
 
     def delete_all_logs(self) -> int:
@@ -187,25 +178,26 @@ class Logger:
     def error(self, tag: str, message: str) -> None:
         self._log(tag, "ERROR", message)
 
-    # --- Message logging (chat translations, separate file) ---
-
-    def message_log(self, line: str) -> None:
-        """Write a translated message to the message log file."""
-        # Throttle cleanup: at most once per hour
-        now = datetime.now().timestamp()
-        if now - self._last_cleanup > 3600:
-            self._last_cleanup = now
-            self._cleanup_old_logs()
-        path = os.path.join(
-            self._log_dir,
-            f"messages_{datetime.now().strftime('%Y-%m-%d')}.log",
-        )
+    def translation_log(self, provider_label: str, model: str, original: str, translated: str) -> None:
+        """Write a translated message to the unified log file.
+        Format: YYYY-MM-DD HH:MM:SS - provider_label-model - original - translated
+        """
         ts = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        try:
-            with open(path, "a", encoding="utf-8") as f:
-                f.write(f"{ts} {line}\n")
-        except OSError:
-            pass
+        line = f"{ts} - {provider_label}-{model} - {original} - {translated}"
+
+        with self._lock:
+            self._buffer.append(line)
+            if len(self._buffer) > self._buffer_size:
+                self._buffer = self._buffer[-self._buffer_size:]
+
+            self._rotate_if_needed()
+            try:
+                self._ensure_file_open()
+                if self._file is not None:
+                    self._file.write(line + "\n")
+                    self._file.flush()
+            except OSError:
+                pass
 
     # --- UI-facing ---
 

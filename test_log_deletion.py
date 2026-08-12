@@ -120,47 +120,43 @@ class TestLogDeletion:
             logger.close()
 
 
-class TestMessageLogDeletion:
-    """Verify message log deletion is independent of translator log deletion."""
+class TestTranslationLog:
+    """Verify the unified translation_log() method."""
 
     def _make_logger(self, tmpdir: str) -> Logger:
-        return Logger(log_dir=tmpdir)
+        return Logger(log_dir=tmpdir, max_files=7, max_size=1024, buffer_size=100)
 
-    def test_delete_message_logs_only_current_date(self):
-        """Bug 4: Both delete buttons call the same delete_all_logs() which
-        wipes ALL log types. Need separate methods for translator vs message logs."""
+    def test_translation_log_writes_unified_format(self):
+        """translation_log() writes to the unified translator_*.log file
+        in format: YYYY-MM-DD HH:MM:SS - provider-model - original - translated"""
         with tempfile.TemporaryDirectory() as tmpdir:
             logger = self._make_logger(tmpdir)
+            logger.translation_log("OpenAI", "gpt-4o", "Hello", "你好")
 
-            # Create translator log entries
-            logger.info("TEST", "translator entry")
+            files = [f for f in os.listdir(tmpdir) if f.startswith("translator_")]
+            assert len(files) >= 1, f"Expected translator log file, got {files}"
 
-            # Create message log entries
-            logger.message_log("[EN] Hello → [ZH] 你好")
+            filepath = os.path.join(tmpdir, files[0])
+            with open(filepath, "r", encoding="utf-8") as f:
+                content = f.read()
+            assert " - OpenAI-gpt-4o - Hello - 你好" in content, \
+                f"Unexpected log format: {content}"
 
-            # Both file types should exist
-            all_logs = [f for f in os.listdir(tmpdir) if f.endswith(".log")]
-            translator_logs = [f for f in all_logs if f.startswith("translator_")]
-            message_logs = [f for f in all_logs if f.startswith("messages_")]
-            assert len(translator_logs) >= 1
-            assert len(message_logs) >= 1
+            # Close before tempdir cleanup, or Windows will block rmtree
+            logger.close()
 
-            # Bug check: the separate delete methods should exist
-            assert hasattr(logger, "delete_translator_logs"), \
-                "Logger missing delete_translator_logs method"
-            assert hasattr(logger, "delete_message_logs"), \
-                "Logger missing delete_message_logs method"
+    def test_delete_all_logs_deletes_everything(self):
+        """After merging, delete_all_logs() removes all translator_*.log files."""
+        with tempfile.TemporaryDirectory() as tmpdir:
+            logger = self._make_logger(tmpdir)
+            logger.info("TEST", "system message")
+            logger.translation_log("OpenAI", "gpt-4o", "Hi", "嗨")
 
-            # Delete only translator logs
-            n = logger.delete_translator_logs()
-            assert n >= 1, f"Expected at least 1 translator log deleted, got {n}"
+            files_before = [f for f in os.listdir(tmpdir) if f.endswith(".log")]
+            assert len(files_before) >= 1
 
-            # Message logs should survive
-            all_logs_after = [f for f in os.listdir(tmpdir) if f.endswith(".log")]
-            msg_after = [f for f in all_logs_after if f.startswith("messages_")]
-            assert len(msg_after) >= 1, \
-                f"Message logs should survive translator-only deletion, got {msg_after}"
+            deleted = logger.delete_all_logs()
+            assert deleted >= 1
 
-            # Now delete message logs
-            m = logger.delete_message_logs()
-            assert m >= 1, f"Expected at least 1 message log deleted, got {m}"
+            files_after = [f for f in os.listdir(tmpdir) if f.endswith(".log")]
+            assert len(files_after) == 0
