@@ -10,7 +10,6 @@ import re
 import threading
 import time
 from collections import OrderedDict
-from concurrent.futures import ThreadPoolExecutor, as_completed
 from queue import Queue
 
 import httpx
@@ -181,7 +180,6 @@ def reassemble_mixed(
 CACHE_SIZE = 1000
 BATCH_WINDOW = 0.3  # seconds to wait for more messages before sending batch
 BATCH_SEPARATOR = "\n---\n"
-PROVIDER_TIMEOUT = 5.0  # seconds before giving up on a provider in sequential mode
 
 
 class ProviderHealth:
@@ -341,12 +339,7 @@ class Translator(threading.Thread):
                 log.info("LLM", f"翻译统计: 翻译={self.stats.translated} 缓存={self.stats.cached} "
                         f"跳过={self.stats.self_skipped} 节省={self.stats.savings_pct()}")
 
-        if self.cfg.translation_backend == "baidu":
-            self._flush_baidu(batch)
-        elif self.cfg.translation_backend == "llm+baidu":
-            self._flush_hybrid(batch)
-        else:
-            self._flush_llm(batch)
+        self._flush_llm(batch)
 
     def _translate_with_mixed_lang(self, text: str, target_lang: str) -> str:
         """Translate text, preserving segments already in the target language.
@@ -405,6 +398,14 @@ class Translator(threading.Thread):
                     timestamp=batch[0].timestamp,
                     is_system=batch[0].is_system,
                 ))
+                log = get_logger()
+                if log and hasattr(self, '_last_provider'):
+                    log.translation_log(
+                        getattr(self, '_last_provider', '?'),
+                        getattr(self, '_last_model', '?'),
+                        text,
+                        translated
+                    )
             else:
                 combined = BATCH_SEPARATOR.join(m.text for m in batch)
                 result = self._call_api(combined)
@@ -421,6 +422,14 @@ class Translator(threading.Thread):
                         timestamp=msg.timestamp,
                         is_system=msg.is_system,
                     ))
+                    log = get_logger()
+                    if log and hasattr(self, '_last_provider'):
+                        log.translation_log(
+                            getattr(self, '_last_provider', '?'),
+                            getattr(self, '_last_model', '?'),
+                            msg.text,
+                            trans
+                        )
         except Exception as e:
             err_msg = self._format_error(e)
             log = get_logger()
@@ -436,116 +445,6 @@ class Translator(threading.Thread):
                     timestamp=msg.timestamp,
                     is_system=msg.is_system,
                 ))
-
-    def _flush_baidu(self, batch):
-        for msg in batch:
-            try:
-                translated = translate_via_baidu(
-                    self.cfg.baidu_appid, self.cfg.baidu_secret, msg.text
-                )
-                self._cache.put(msg.text, translated)
-                detected = detect_language(msg.text)
-                self.out_queue.put(DisplayMessage(
-                    player_name=msg.player_name,
-                    original_text=msg.text,
-                    translated_text=translated,
-                    detected_language=detected,
-                    timestamp=msg.timestamp,
-                    is_system=msg.is_system,
-                ))
-            except Exception as e:
-                log = get_logger()
-                if log:
-                    log.error("BDU", f"百度翻译失败: {e}")
-                detected = detect_language(msg.text)
-                self.out_queue.put(DisplayMessage(
-                    player_name=msg.player_name,
-                    original_text=msg.text,
-                    translated_text=f"[百度翻译失败] {e}",
-                    detected_language=detected,
-                    timestamp=msg.timestamp,
-                    is_system=msg.is_system,
-                ))
-
-    def _flush_hybrid(self, batch):
-        """LLM translates first, Baidu verifies in parallel and overrides if different."""
-        # Step 1: get LLM translations (reuse batch logic)
-        llm_results: dict[str, str] = {}  # text -> translation
-        try:
-            if len(batch) == 1:
-                text = batch[0].text
-                llm_results[text] = self._call_api(text)
-            else:
-                combined = BATCH_SEPARATOR.join(m.text for m in batch)
-                result = self._call_api(combined)
-                parts = [p.strip() for p in result.split(BATCH_SEPARATOR)]
-                for i, msg in enumerate(batch):
-                    llm_results[msg.text] = parts[i] if i < len(parts) else msg.text
-        except Exception as e:
-            err_msg = self._format_error(e)
-            for msg in batch:
-                detected = detect_language(msg.text)
-                self.out_queue.put(DisplayMessage(
-                    player_name=msg.player_name,
-                    original_text=msg.text,
-                    translated_text=err_msg,
-                    detected_language=detected,
-                    timestamp=msg.timestamp,
-                    is_system=msg.is_system,
-                ))
-            return
-
-        # Step 2: get Baidu translations in parallel
-        baidu_results: dict[str, str] = {}
-        with ThreadPoolExecutor(max_workers=4) as executor:
-            futures = {
-                executor.submit(
-                    translate_via_baidu,
-                    self.cfg.baidu_appid, self.cfg.baidu_secret, msg.text,
-                ): msg.text
-                for msg in batch
-            }
-            for future in as_completed(futures):
-                text = futures[future]
-                try:
-                    baidu_results[text] = future.result()
-                except Exception:
-                    pass  # Baidu failed for this text, will fall back to LLM
-
-        # Step 3: compare and emit
-        baidu_override_count = 0
-        for msg in batch:
-            detected = detect_language(msg.text)
-            llm_trans = llm_results.get(msg.text, msg.text)
-            baidu_trans = baidu_results.get(msg.text)
-            if baidu_trans is not None and _translations_differ(llm_trans, baidu_trans):
-                baidu_override_count += 1
-                # Baidu overrides LLM
-                self._cache.put(msg.text, baidu_trans)
-                self.out_queue.put(DisplayMessage(
-                    player_name=msg.player_name,
-                    original_text=msg.text,
-                    translated_text=baidu_trans,
-                    baidu_fixed=True,
-                    detected_language=detected,
-                    timestamp=msg.timestamp,
-                    is_system=msg.is_system,
-                ))
-            else:
-                self._cache.put(msg.text, llm_trans)
-                self.out_queue.put(DisplayMessage(
-                    player_name=msg.player_name,
-                    original_text=msg.text,
-                    translated_text=llm_trans,
-                    detected_language=detected,
-                    timestamp=msg.timestamp,
-                    is_system=msg.is_system,
-                ))
-
-        if baidu_override_count > 0:
-            log = get_logger()
-            if log:
-                log.info("BDU", f"百度纠错: {baidu_override_count}/{len(batch)} 条被覆盖")
 
     # ── Circuit breaker ──
 
@@ -596,6 +495,17 @@ class Translator(threading.Thread):
         model = provider.get("model", "")
         api_format = provider.get("api_format", "openai")
 
+        # Baidu API branch
+        if api_format == "baidu":
+            extra = provider.get("extra_body", {})
+            appid = extra.get("baidu_appid", "") or provider.get("baidu_appid", "")
+            secret = extra.get("baidu_secret", "") or provider.get("baidu_secret", "")
+            if not appid or not secret:
+                raise Exception("百度翻译需要 APP ID 和密钥")
+            target_lang = self.cfg.target_language
+            baidu_to = _lang_code_to_baidu(target_lang)
+            return translate_via_baidu(appid, secret, text, to_lang=baidu_to)
+
         # Per-provider timeout overrides the caller's timeout
         provider_timeout = timeout
         if "timeout" in provider and isinstance(provider["timeout"], (int, float)):
@@ -644,18 +554,18 @@ class Translator(threading.Thread):
             client.close()
 
     def _call_api(self, text: str) -> str:
-        """Call providers with parallel race + serial fallback.
+        """Round-robin provider dispatch with in-flight request merging.
         Merges in-flight identical requests. Filters cooling providers."""
         if self._should_skip(text):
             return text
 
         # Request merging: wait for identical in-flight request
+        existing = None
         with self._in_flight_lock:
             existing = self._in_flight.get(text)
             if existing is None:
                 self._in_flight[text] = threading.Event()
             else:
-                # Release lock before waiting so producer can signal
                 event_to_await = existing
 
         if existing is not None:
@@ -667,7 +577,9 @@ class Translator(threading.Thread):
             # Timeout or no result — fall through to translate
 
         try:
-            result = self._call_api_internal(text)
+            result, provider_label, model = self._call_api_internal(text)
+            self._last_provider = provider_label
+            self._last_model = model
             with self._in_flight_lock:
                 self._in_flight_results[text] = result
             return result
@@ -676,14 +588,13 @@ class Translator(threading.Thread):
                 event = self._in_flight.pop(text, None)
                 if event:
                     event.set()  # wake waiters first — they read _in_flight_results
-                # Keep result briefly so late waiters can still read it
-                # (LRU cache handles dedup; old entries are harmless)
 
-    def _call_api_internal(self, text: str) -> str:
-        """Provider parallel race + serial fallback with circuit breaker."""
+    def _call_api_internal(self, text: str) -> tuple[str, str, str]:
+        """Round-robin provider selection with circuit breaker fallback.
+        Returns (translated_text, provider_label, model_name)."""
         providers = [p for p in self.cfg.llm_providers if p.get("enabled", True)]
         if not providers:
-            return self._call_api_legacy(text)
+            return self._call_api_legacy(text), "legacy", ""
 
         # Filter out cooling providers
         active = [p for p in providers if not self._is_cooling(p.get("label", "unknown"))]
@@ -693,107 +604,59 @@ class Translator(threading.Thread):
                 log.warn("LLM", "所有 Provider 均处于冷却期，强制重试全部")
             active = providers
 
-        skipped = len(providers) - len(active)
-        if skipped > 0:
-            log = get_logger()
-            if log:
-                cooling_names = [p.get("label", "unknown") for p in providers if p not in active]
-                log.warn("LLM", f"跳过冷却中的 Provider: {', '.join(cooling_names)}")
-
-        # Sequential mode: try providers one by one with 5s timeout each
-        if self.cfg.provider_mode == "sequential":
-            return self._call_sequential(active, providers, text)
+        # Round-robin selection
+        with self._health_lock:
+            idx = getattr(self, '_rr_index', 0)
+            setattr(self, '_rr_index', (idx + 1) % len(active))
 
         log = get_logger()
+        selected = active[idx]
+        label = selected.get("label", "unknown")
+        model = selected.get("model", "")
 
-        # Round 1: Parallel race (only active providers)
-        errors = []
-        with ThreadPoolExecutor(max_workers=min(len(active), 4)) as executor:
-            futures = {
-                executor.submit(self._call_provider, p, text): p.get("label", "unknown")
-                for p in active
-            }
-            for future in as_completed(futures):
-                label = futures[future]
-                try:
-                    result = future.result()
-                    self._note_provider_result(label, True)
-                    if log:
-                        log.info("LLM", f"竞速成功: {label}")
-                    return result
-                except Exception as e:
-                    err = self._format_error(e)
-                    errors.append(f"{label}: {err}")
-                    self._note_provider_result(label, False)
-                    if log:
-                        log.warn("LLM", f"竞速失败: {label} - {err}")
-
-        # Round 2: Serial retry (active + cooling, 180ms apart)
-        if log:
-            log.warn("LLM", f"第一轮全部失败，进入串行重试 ({len(active)} providers)")
-        retry_list = active + [p for p in providers if p not in active]
-        for p in retry_list:
-            try:
-                result = self._call_provider(p, text)
-                self._note_provider_result(p.get("label", "unknown"), True)
-                if log:
-                    log.info("LLM", f"重试成功: {p['label']}")
-                return result
-            except Exception:
-                self._note_provider_result(p.get("label", "unknown"), False)
-                time.sleep(0.18)
-
-        raise Exception(" | ".join(errors) if errors else "所有 Provider 翻译失败")
-
-    def _call_sequential(self, active, all_providers, text):
-        """Sequential provider fallback: try each in order, 5s timeout each."""
-        log = get_logger()
-        errors = []
-
-        for p in active:
-            label = p.get("label", "unknown")
+        # Try selected provider
+        try:
+            result = self._call_provider(selected, text)
+            self._note_provider_result(label, True)
             if log:
-                log.info("LLM", f"顺序尝试: {label}")
+                log.info("LLM", f"轮转成功 [{idx}/{len(active)}]: {label}")
+            return result, label, model
+        except Exception as e:
+            err = self._format_error(e)
+            self._note_provider_result(label, False)
+            if log:
+                log.warn("LLM", f"轮转失败: {label} - {err}")
+
+        # Fallback: try remaining providers in round-robin order
+        for offset in range(1, len(active)):
+            candidate = active[(idx + offset) % len(active)]
+            clabel = candidate.get("label", "unknown")
+            cmodel = candidate.get("model", "")
             try:
-                result = self._call_provider(p, text, timeout=PROVIDER_TIMEOUT)
-                self._note_provider_result(label, True)
+                result = self._call_provider(candidate, text)
+                self._note_provider_result(clabel, True)
                 if log:
-                    log.info("LLM", f"顺序成功: {label}")
-                return result
-            except (httpx.ConnectError, httpx.TimeoutException) as e:
-                err = self._format_error(e)
-                errors.append(f"{label}: {err}")
-                self._note_provider_result(label, False)
-                if log:
-                    log.warn("LLM", f"顺序失败(超时/连接): {label} - {err}")
-            except httpx.HTTPStatusError as e:
-                err = self._format_error(e)
-                errors.append(f"{label}: {err}")
-                self._note_provider_result(label, False)
-                if log:
-                    log.warn("LLM", f"顺序失败(HTTP {e.response.status_code}): {label} - {err}")
+                    log.info("LLM", f"回退成功 [{offset}]: {clabel}")
+                return result, clabel, cmodel
             except Exception as e:
                 err = self._format_error(e)
-                errors.append(f"{label}: {err}")
-                self._note_provider_result(label, False)
+                self._note_provider_result(clabel, False)
                 if log:
-                    log.warn("LLM", f"顺序失败: {label} - {err}")
+                    log.warn("LLM", f"回退失败: {clabel} - {err}")
 
-        # All active failed, serial retry all (including cooling)
-        if log:
-            log.warn("LLM", f"全部顺序失败，进入串行重试 ({len(all_providers)} providers)")
-        for p in all_providers:
+        # Last resort: retry all including cooling
+        for p in providers:
+            plabel = p.get("label", "unknown")
+            pmodel = p.get("model", "")
             try:
                 result = self._call_provider(p, text, timeout=8.0)
-                self._note_provider_result(p.get("label", "unknown"), True)
-                if log:
-                    log.info("LLM", f"重试成功: {p['label']}")
-                return result
+                self._note_provider_result(plabel, True)
+                return result, plabel, pmodel
             except Exception:
-                self._note_provider_result(p.get("label", "unknown"), False)
+                self._note_provider_result(plabel, False)
                 time.sleep(0.18)
 
-        raise Exception(" | ".join(errors) if errors else "所有 Provider 翻译失败")
+        raise Exception("所有 Provider 翻译失败")
 
     def _call_api_legacy(self, text: str) -> str:
         """Legacy single-API fallback (used when llm_providers is empty)."""
@@ -935,65 +798,72 @@ def _lang_code_to_baidu(lang_code: str) -> str:
     return _baidu_map.get(lang_code, "en")
 
 
-def translate_for_send(cfg: AppConfig, text: str, target_lang: str = "en") -> str:
-    """Translate Chinese text to the target language for sending in chat.
-    Returns the translated text, or raises an exception on error."""
+def _should_skip_internal(text: str, target_lang: str) -> bool:
+    """Skip translation if text appears to already be in the target language."""
+    if not text or not text.strip():
+        return True
+    detected = detect_language(text)
+    _name_to_code = {
+        "中文": "zh", "英语": "en", "日语": "ja", "韩语": "ko",
+        "俄语": "ru", "德语": "de", "法语": "fr",
+        "西班牙语": "es", "葡萄牙语": "pt", "意大利语": "it",
+        "泰语": "th", "阿拉伯语": "ar",
+    }
+    code = _name_to_code.get(detected, "")
+    if code and target_lang.startswith(code):
+        return True
+    return False
+
+
+def _call_single_provider(p: dict, text: str, target_lang: str, cfg: AppConfig) -> str:
+    """Call a single LLM provider for send translation."""
     target_name = _LANG_DISPLAY_NAMES.get(target_lang, "英语")
+    ep = p["endpoint"].strip()
+    if not ep.startswith(("http://", "https://")):
+        ep = "https://" + ep
+    payload = {
+        "model": p["model"],
+        "messages": [
+            {"role": "system", "content": SEND_SYSTEM_PROMPT.replace("{target_language}", target_name)},
+            {"role": "user", "content": text},
+        ],
+        "temperature": 0.3,
+        "max_tokens": 300,
+    }
+    # Merge extra_body fields
+    extra_body = p.get("extra_body", {})
+    if isinstance(extra_body, dict) and extra_body:
+        payload.update(extra_body)
 
-    if cfg.translation_backend == "baidu":
-        baidu_to = _lang_code_to_baidu(target_lang)
-        return translate_via_baidu(cfg.baidu_appid, cfg.baidu_secret, text, to_lang=baidu_to)
+    api_key = p.get("api_key", "")
+    api_format = p.get("api_format", "openai")
+    headers = {
+        "Content-Type": "application/json",
+    }
+    if api_format == "anthropic":
+        headers["x-api-key"] = api_key
+        headers["anthropic-version"] = "2023-06-01"
+    else:
+        headers["Authorization"] = f"Bearer {api_key}"
+    # Merge extra_headers
+    extra_headers = p.get("extra_headers", {})
+    if isinstance(extra_headers, dict) and extra_headers:
+        for k, v in extra_headers.items():
+            resolved = v.replace("{api_key}", api_key)
+            headers[k] = resolved
 
-    # Use multi-provider if available
-    providers = [p for p in cfg.llm_providers if p.get("enabled", True)]
-    if providers:
-        errors = []
-        with ThreadPoolExecutor(max_workers=min(len(providers), 4)) as executor:
-            def _call_one(p):
-                ep = p["endpoint"].strip()
-                if not ep.startswith(("http://", "https://")):
-                    ep = "https://" + ep
-                payload = {
-                    "model": p["model"],
-                    "messages": [
-                        {"role": "system", "content": SEND_SYSTEM_PROMPT.replace("{target_language}", target_name)},
-                        {"role": "user", "content": text},
-                    ],
-                    "temperature": 0.3,
-                    "max_tokens": 300,
-                }
-                headers = {
-                    "Content-Type": "application/json",
-                    "Authorization": f"Bearer {p['api_key']}",
-                }
-                resp = httpx.post(ep, json=payload, headers=headers, timeout=8.0)
-                resp.raise_for_status()
-                data = resp.json()
-                return data["choices"][0]["message"]["content"].strip()
+    resp = httpx.post(ep, json=payload, headers=headers, timeout=8.0)
+    resp.raise_for_status()
+    data = resp.json()
+    return data["choices"][0]["message"]["content"].strip()
 
-            futures = {executor.submit(_call_one, p): p.get("label", "unknown") for p in providers}
-            for future in as_completed(futures):
-                try:
-                    llm_result = future.result()
-                    # Hybrid: Baidu verify
-                    if cfg.translation_backend == "llm+baidu" and cfg.baidu_appid and cfg.baidu_secret:
-                        try:
-                            baidu_to = _lang_code_to_baidu(target_lang)
-                            baidu_result = translate_via_baidu(cfg.baidu_appid, cfg.baidu_secret, text, to_lang=baidu_to)
-                            if _translations_differ(llm_result, baidu_result):
-                                return baidu_result
-                        except Exception:
-                            pass
-                    return llm_result
-                except Exception as e:
-                    errors.append(str(e))
-        raise Exception(" | ".join(errors) if errors else "所有 Provider 翻译失败")
 
-    # Legacy single-API fallback
+def _legacy_send_translate(cfg: AppConfig, text: str, target_lang: str) -> str:
+    """Legacy single-API fallback for send translation (no providers configured)."""
+    target_name = _LANG_DISPLAY_NAMES.get(target_lang, "英语")
     endpoint = cfg.api_endpoint.strip()
     if not endpoint.startswith(("http://", "https://")):
         endpoint = "https://" + endpoint
-
     payload = {
         "model": cfg.api_model,
         "messages": [
@@ -1010,19 +880,39 @@ def translate_for_send(cfg: AppConfig, text: str, target_lang: str = "en") -> st
     resp = httpx.post(endpoint, json=payload, headers=headers, timeout=8.0)
     resp.raise_for_status()
     data = resp.json()
-    llm_result = data["choices"][0]["message"]["content"].strip()
+    return data["choices"][0]["message"]["content"].strip()
 
-    # Hybrid mode: Baidu verifies and overrides if different
-    if cfg.translation_backend == "llm+baidu" and cfg.baidu_appid and cfg.baidu_secret:
+
+def translate_for_send(cfg: AppConfig, text: str) -> str:
+    """Translate player's message to target language for sending."""
+    target_lang = cfg.send_target_language
+    if not text or not text.strip():
+        return text
+
+    if _should_skip_internal(text, target_lang):
+        return text
+
+    providers = [p for p in cfg.llm_providers if p.get("enabled", True)]
+    if not providers:
+        return _legacy_send_translate(cfg, text, target_lang)
+
+    # Try each provider in order
+    for p in providers:
+        api_format = p.get("api_format", "openai")
         try:
-            baidu_to = _lang_code_to_baidu(target_lang)
-            baidu_result = translate_via_baidu(cfg.baidu_appid, cfg.baidu_secret, text, to_lang=baidu_to)
-            if _translations_differ(llm_result, baidu_result):
-                return baidu_result
+            if api_format == "baidu":
+                extra = p.get("extra_body", {})
+                appid = extra.get("baidu_appid", "") or p.get("baidu_appid", "")
+                secret = extra.get("baidu_secret", "") or p.get("baidu_secret", "")
+                if appid and secret:
+                    baidu_to = _lang_code_to_baidu(target_lang)
+                    return translate_via_baidu(appid, secret, text, to_lang=baidu_to)
+            else:
+                return _call_single_provider(p, text, target_lang, cfg)
         except Exception:
-            pass
+            continue
 
-    return llm_result
+    raise Exception("所有 Provider 发送翻译失败")
 
 
 def translate_via_baidu(appid: str, secret: str, text: str, to_lang: str = "zh") -> str:
@@ -1056,11 +946,6 @@ def translate_to_english_via_baidu(appid: str, secret: str, text: str) -> str:
     return translate_via_baidu(appid, secret, text, to_lang="en")
 
 
-def _translations_differ(a: str, b: str) -> bool:
-    """Check if two translations are meaningfully different (not just punctuation)."""
-    a_norm = a.strip().lower().rstrip(".!?;:。！？；：…\"'\"")
-    b_norm = b.strip().lower().rstrip(".!?;:。！？；：…\"'\"")
-    return a_norm != b_norm
 
 
 def test_baidu_connection(appid: str, secret: str) -> tuple:
