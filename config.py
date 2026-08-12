@@ -231,11 +231,9 @@ class AppConfig:
     paste_hotkey: str = "ctrl+v" # hotkey to paste (Ctrl+V) into game
     enter_hotkey: str = "enter"  # hotkey to press Enter in game
     send_hotkey: str = "shift+y" # global hotkey to focus translator input
-    translation_backend: str = "llm"  # "llm" or "baidu"
-    baidu_appid: str = ""   # Baidu Translate APP ID
-    baidu_secret: str = ""  # Baidu Translate secret key
+    baidu_appid: str = ""   # Baidu Translate APP ID (kept for migration detection)
+    baidu_secret: str = ""  # Baidu Translate secret key (kept for migration detection)
     debug_log: bool = False  # enable debug logging to %TEMP%
-    provider_mode: str = "race"  # "race" = parallel race, "sequential" = sequential fallback
     show_language_label: bool = True  # show [语言] label before each translated message
     show_original_text: bool = True  # show original text in smaller gray below translation
     accent_color: str = "#3b82f6"  # blue accent color for highlights, stats numbers, borders
@@ -292,6 +290,42 @@ def _migrate_config_v2(data: dict) -> dict:
 
     data["version"] = 2
     data["llm_providers"] = new_providers
+
+    # ── v2.1 migration: Baidu as provider ──
+    _backend = data.get("translation_backend", "llm")
+    _baidu_appid = data.get("baidu_appid", "")
+    _baidu_secret = data.get("baidu_secret", "")
+
+    if _baidu_appid and _baidu_secret:
+        # Check if a Baidu provider already exists
+        has_baidu = any(
+            p.get("api_format") == "baidu" for p in data.get("llm_providers", [])
+        )
+        if not has_baidu:
+            baidu_provider = {
+                "id": "baidu",
+                "label": "百度翻译",
+                "endpoint": "https://fanyi-api.baidu.com/api/trans/vip/translate",
+                "api_key": "",
+                "model": "通用翻译",
+                "enabled": True,
+                "preset_id": "baidu",
+                "icon": "baidu",
+                "api_format": "baidu",
+                "weight": 100,
+                "extra_headers": {},
+                "extra_body": {
+                    "baidu_appid": _baidu_appid,
+                    "baidu_secret": _baidu_secret,
+                },
+                "timeout": 5,
+            }
+            data["llm_providers"].append(baidu_provider)
+
+    # Clean up deprecated fields
+    data.pop("translation_backend", None)
+    data.pop("provider_mode", None)
+
     return data
 
 
@@ -356,12 +390,6 @@ def save_config(cfg: AppConfig):
         if "api_key" in provider and isinstance(provider["api_key"], str):
             provider["api_key"] = _maybe_encrypt("api_key", provider["api_key"])
 
-    # Sync first provider to legacy flat fields for backward compat
-    if data.get("llm_providers"):
-        first = data["llm_providers"][0]
-        data["api_endpoint"] = first.get("endpoint", "")
-        data["api_key"] = first.get("api_key", "")
-        data["api_model"] = first.get("model", "")
     content = json.dumps(data, indent=2, ensure_ascii=False)
     try:
         with open(CONFIG_PATH, "w", encoding="utf-8") as f:
