@@ -41,7 +41,7 @@ FG_STATS_NUM = ACCENT    # stats numbers (core blue)
 FG_STATS_LABEL = FG_DIM  # stats labels
 PLAYER   = HIGHLIGHT     # player name (highlight blue)
 SYS_GRAY = "#858585"     # system messages
-TRANSL   = "#cccccc"     # translation output
+TRANSL   = "#FFD700"     # gold translation output
 SEP      = BORDER_BLUE   # separator lines (border blue)
 BORDER   = BORDER_BLUE   # window outer border
 CARD_BG  = "#151515"     # card elements (slightly lighter than pure black)
@@ -262,8 +262,6 @@ class OverlayWindow:
                                 font=("Microsoft YaHei", fs, "bold"))
         self.text.tag_configure("error", foreground=ERROR_RED,
                                 font=("Microsoft YaHei", fs))
-        self.text.tag_configure("baidu_fix", foreground=ERROR_RED,
-                                font=("Microsoft YaHei", fs, "bold"))
         self.text.tag_configure("sent_prefix", foreground=SELF_GREEN,
                                 font=("Microsoft YaHei", fs, "bold"))
         self.text.tag_configure("separator", foreground=SEP,
@@ -583,15 +581,6 @@ class OverlayWindow:
                     timestamp: str = "", is_system: bool = False):
         self._messages.append((player_name, original, translated, is_self,
                                detected_language, timestamp, is_system))
-        # Write to message log
-        try:
-            from logger import get_logger
-            log = get_logger()
-            if log:
-                prefix = "(You) " if is_self else ""
-                log.message_log(f"[{prefix}{player_name}] {original} → {translated}")
-        except Exception:
-            pass
         # Trim
         if len(self._messages) > self.cfg.max_messages:
             trimmed = len(self._messages) - self.cfg.max_messages
@@ -671,8 +660,7 @@ class OverlayWindow:
 
             # Line 2: translation (indented 2 spaces)
             if trans != orig:
-                ttag = "baidu_fix" if trans.startswith("[百度优化]") else (
-                    "error" if trans.startswith("[") else "translation")
+                ttag = "error" if trans.startswith("[") else "translation"
                 tags.append((ttag, f"  {trans}\n"))
             else:
                 tags.append(("translation", f"  {orig}\n"))
@@ -700,18 +688,13 @@ class OverlayWindow:
 
     def poll_messages(self):
         new_count = 0
-        baidu_count = 0
         while True:
             try:
                 item = self.queue.get_nowait()
                 if isinstance(item, DisplayMessage):
-                    translated = item.translated_text
-                    if item.baidu_fixed:
-                        translated = f"[百度优化] {translated}"
-                        baidu_count += 1
                     self.add_message(
                         item.player_name, item.original_text,
-                        translated, item.is_self,
+                        item.translated_text, item.is_self,
                         item.detected_language, item.timestamp, item.is_system,
                     )
                     self.root.deiconify()
@@ -720,10 +703,6 @@ class OverlayWindow:
                 elif isinstance(item, tuple) and len(item) >= 2:
                     # Legacy tuple support
                     msg, translated = item[0], item[1]
-                    baidu_fixed = len(item) >= 3 and item[2]
-                    if baidu_fixed:
-                        translated = f"[百度优化] {translated}"
-                        baidu_count += 1
                     ts = getattr(msg, 'timestamp', '')
                     is_sys = getattr(msg, 'is_system', False)
                     self.add_message(msg.player_name, msg.text, translated, msg.is_self,
@@ -734,17 +713,8 @@ class OverlayWindow:
             except Empty:
                 break
 
-        if baidu_count > 0:
-            self._show_notice(f"百度翻译优化了 {baidu_count} 条翻译", ERROR_RED)
-        elif new_count > 0:
-            backend = self.cfg.translation_backend
-            if backend == "baidu":
-                notice = f"百度翻译了 {new_count} 条消息"
-            elif backend == "llm+baidu":
-                notice = f"大模型+百度翻译了 {new_count} 条消息"
-            else:
-                notice = f"大模型翻译了 {new_count} 条消息"
-            self._show_notice(notice, SELF_GREEN, "#1a2a1a")
+        if new_count > 0:
+            self._show_notice(f"翻译了 {new_count} 条消息", SELF_GREEN, "#1a2a1a")
 
         self._update_stats_display()
         self.root.after(250, self.poll_messages)
@@ -913,7 +883,7 @@ class OverlayWindow:
     def _do_translate(self, chinese_text: str):
         from translator import translate_for_send
         try:
-            english = translate_for_send(self.cfg, chinese_text, self.cfg.send_target_language)
+            english = translate_for_send(self.cfg, chinese_text)
         except Exception as e:
             self.root.after(0, lambda: self._on_translate_error(str(e)))
             return
