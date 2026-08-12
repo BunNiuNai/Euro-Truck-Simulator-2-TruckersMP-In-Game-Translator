@@ -9,7 +9,6 @@ class DisplayMessage:
     original_text: str
     translated_text: str
     is_self: bool = False
-    baidu_fixed: bool = False  # True if Baidu override was applied
     detected_language: str = ""  # e.g. "英语", "德语", "俄语"
     timestamp: str = ""  # HH:MM:SS from chat log
     is_system: bool = False  # True for system/channel messages (no player name)
