@@ -516,7 +516,7 @@ class Translator(threading.Thread):
         payload = {
             "model": model,
             "messages": [
-                {"role": "user", "content": f'帮我把"{text}"翻译成简体中文'},
+                {"role": "user", "content": f'把以下文字翻译成简体中文，只输出译文：{text}'},
             ],
             "temperature": 0.2,
             "max_tokens": 500 if BATCH_SEPARATOR not in text else 500 * text.count(BATCH_SEPARATOR) + 500,
@@ -667,7 +667,7 @@ class Translator(threading.Thread):
         payload = {
             "model": self.cfg.api_model,
             "messages": [
-                {"role": "user", "content": f'帮我把"{text}"翻译成简体中文'},
+                {"role": "user", "content": f'把以下文字翻译成简体中文，只输出译文：{text}'},
             ],
             "temperature": 0.2,
             "max_tokens": 500 if BATCH_SEPARATOR not in text else 500 * text.count(BATCH_SEPARATOR) + 500,
