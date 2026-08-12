@@ -60,11 +60,9 @@ class MessageDisplay:
                                 font=("Microsoft YaHei", fs, "bold"))
         self.text.tag_configure("original", foreground=FG)
         self.text.tag_configure("arrow", foreground="#6a6a6a")
-        self.text.tag_configure("translation", foreground="#dcdcaa")
+        self.text.tag_configure("translation", foreground="#FFD700")
         self.text.tag_configure("self_prefix", foreground="#4ec9b0")
         self.text.tag_configure("error", foreground="#f44747")
-        self.text.tag_configure("baidu_fix", foreground="#f44747",
-                                font=("Microsoft YaHei", fs, "bold"))
         self.text.tag_configure("sent_prefix", foreground="#4ec9b0",
                                 font=("Microsoft YaHei", fs, "bold"))
         self.text.tag_configure("sent_arrow", foreground="#5a8a5a")
@@ -180,9 +178,7 @@ class MessageDisplay:
         tags.append(("original", f"{orig}"))
         if trans != orig:
             tags.append(("arrow", " -> "))
-            if trans.startswith("[百度优化]"):
-                tag = "baidu_fix"
-            elif trans.startswith("["):
+            if trans.startswith("["):
                 tag = "error"
             else:
                 tag = "translation"
@@ -242,7 +238,6 @@ class MessageDisplay:
         self.text.tag_configure("translation", font=font)
         self.text.tag_configure("self_prefix", font=font)
         self.text.tag_configure("error", font=font)
-        self.text.tag_configure("baidu_fix", font=bold_font)
         self.text.tag_configure("sent_prefix", font=bold_font)
         self.text.tag_configure("sent_arrow", font=font)
         self.text.tag_configure("separator", font=small_font)
