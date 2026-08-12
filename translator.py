@@ -14,7 +14,7 @@ from queue import Queue
 
 import httpx
 
-from config import AppConfig, get_send_prompt
+from config import AppConfig
 from logger import get_logger
 from message_types import DisplayMessage, TranslationStats
 
@@ -781,7 +781,12 @@ def test_connection(endpoint: str, api_key: str, model: str) -> tuple:
         return False, f"连接失败: {e}"
 
 
-# Send prompts are loaded per-language from prompts/send/{lang}.txt
+# Language names in Chinese for the send instruction template
+_SEND_LANG_NAMES: dict[str, str] = {
+    "en": "英语", "ja": "日语", "ko": "韩语",
+    "de": "德语", "fr": "法语", "es": "西班牙语",
+    "ru": "俄语", "pt": "葡萄牙语", "it": "意大利语",
+}
 
 
 def _lang_code_to_baidu(lang_code: str) -> str:
@@ -813,15 +818,15 @@ def _should_skip_internal(text: str, target_lang: str) -> bool:
 
 def _call_single_provider(p: dict, text: str, target_lang: str, cfg: AppConfig) -> str:
     """Call a single LLM provider for send translation."""
-    prompt = get_send_prompt(target_lang)
+    lang_name = _SEND_LANG_NAMES.get(target_lang, "英语")
+    user_msg = f'帮我把"{text}"翻译成{lang_name}'
     ep = p["endpoint"].strip()
     if not ep.startswith(("http://", "https://")):
         ep = "https://" + ep
     payload = {
         "model": p["model"],
         "messages": [
-            {"role": "system", "content": prompt},
-            {"role": "user", "content": text},
+            {"role": "user", "content": user_msg},
         ],
         "temperature": 0.3,
         "max_tokens": 300,
@@ -856,15 +861,15 @@ def _call_single_provider(p: dict, text: str, target_lang: str, cfg: AppConfig) 
 
 def _legacy_send_translate(cfg: AppConfig, text: str, target_lang: str) -> str:
     """Legacy single-API fallback for send translation (no providers configured)."""
-    prompt = get_send_prompt(target_lang)
+    lang_name = _SEND_LANG_NAMES.get(target_lang, "英语")
+    user_msg = f'帮我把"{text}"翻译成{lang_name}'
     endpoint = cfg.api_endpoint.strip()
     if not endpoint.startswith(("http://", "https://")):
         endpoint = "https://" + endpoint
     payload = {
         "model": cfg.api_model,
         "messages": [
-            {"role": "system", "content": prompt},
-            {"role": "user", "content": text},
+            {"role": "user", "content": user_msg},
         ],
         "temperature": 0.3,
         "max_tokens": 300,
