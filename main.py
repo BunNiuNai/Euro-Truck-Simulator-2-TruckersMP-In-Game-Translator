@@ -144,7 +144,7 @@ class App:
                 else:
                     ok, msg = test_connection(
                         p.get("endpoint", ""), p.get("api_key", ""),
-                        p.get("model", ""), api_format=p.get("api_format", "openai")
+                        p.get("model", "")
                     )
                 if not ok:
                     ok_all = False
@@ -1372,8 +1372,7 @@ class SettingsDialog:
                         secret = extra.get("baidu_secret", "") or p.get("baidu_secret", "")
                         ok, msg = test_baidu_connection(appid, secret)
                     else:
-                        ok, msg = test_connection(p["endpoint"], p["api_key"], p["model"],
-                                                  api_format=api_format)
+                        ok, msg = test_connection(p["endpoint"], p["api_key"], p["model"])
                     results.append(f"{p['label']}: {'✓' if ok else '✗'} {msg}")
             self.top.after(0, lambda: self._on_test_result(
                 all("✓" in r for r in results) if results else True,
