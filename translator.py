@@ -231,6 +231,9 @@ class Translator(threading.Thread):
         self._in_flight: dict[str, threading.Event] = {}
         self._in_flight_results: dict[str, str] = {}
         self._in_flight_lock = threading.Lock()
+        self._rr_index = 0                # round-robin dispatch index
+        self._last_provider = "?"         # last used provider label (for logging)
+        self._last_model = "?"            # last used model name (for logging)
 
     def _get_client(self) -> httpx.Client:
         """Get or create a per-thread httpx client."""
@@ -939,13 +942,6 @@ def translate_via_baidu(appid: str, secret: str, text: str, to_lang: str = "zh")
         err_msg = data.get("error_msg", data["error_code"])
         raise Exception(f"百度翻译错误 {data['error_code']}: {err_msg}")
     return data["trans_result"][0]["dst"]
-
-
-def translate_to_english_via_baidu(appid: str, secret: str, text: str) -> str:
-    """Translate Chinese text to English via Baidu API."""
-    return translate_via_baidu(appid, secret, text, to_lang="en")
-
-
 
 
 def test_baidu_connection(appid: str, secret: str) -> tuple:

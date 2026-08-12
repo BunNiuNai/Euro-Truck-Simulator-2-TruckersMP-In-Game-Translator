@@ -9,6 +9,7 @@ import tkinter as tk
 import webbrowser
 from queue import Queue
 from tkinter import ttk
+from tkinter import messagebox
 
 from config import AppConfig, load_config, save_config, CONFIG_PATH, DOCUMENTS_PATH
 from monitor import ChatMonitor, CHAT_LOG_DIR, log_dir_status
@@ -1458,6 +1459,18 @@ class SettingsDialog:
             show_language_label=self.lang_label_var.get(),
             ad_messages=[a.get("1.0", tk.END).strip() for a in self._ad_message_areas],
             ad_countdown=self.ad_countdown_entry.get().strip(),
+            # Preserve fields not exposed in settings dialog
+            chat_hotkey=self.cfg.chat_hotkey,
+            paste_hotkey=self.cfg.paste_hotkey,
+            show_original_text=self.cfg.show_original_text,
+            debug_log=self.cfg.debug_log,
+            accent_color=self.cfg.accent_color,
+            win_x=self.cfg.win_x,
+            win_y=self.cfg.win_y,
+            win_w=self.cfg.win_w,
+            win_h=self.cfg.win_h,
+            baidu_appid=self.cfg.baidu_appid,
+            baidu_secret=self.cfg.baidu_secret,
         )
         # Save settings dialog size
         try:
