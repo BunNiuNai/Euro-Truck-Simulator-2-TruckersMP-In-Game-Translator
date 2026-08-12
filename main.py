@@ -126,27 +126,41 @@ class App:
         threading.Thread(target=self._do_startup_check, daemon=True).start()
 
     def _do_startup_check(self):
-        backend = self.cfg.translation_backend
-        if backend == "baidu":
-            ok, msg = test_baidu_connection(self.cfg.baidu_appid, self.cfg.baidu_secret)
-        elif backend == "llm+baidu":
-            ok1, msg1 = test_connection(
-                self.cfg.api_endpoint, self.cfg.api_key, self.cfg.api_model
-            )
-            ok2, msg2 = test_baidu_connection(self.cfg.baidu_appid, self.cfg.baidu_secret)
-            ok = ok1 and ok2
-            msg = f"LLM: {msg1}\n百度: {msg2}"
-        else:
-            ok, msg = test_connection(
-                self.cfg.api_endpoint, self.cfg.api_key, self.cfg.api_model
-            )
-        if ok:
+        """Run connectivity test on startup for all enabled providers."""
+        providers = [p for p in self.cfg.llm_providers if p.get("enabled", True)]
+        if not providers:
+            return
+
+        ok_all = True
+        msgs = []
+        for p in providers:
+            label = p.get("label", "unknown")
+            try:
+                if p.get("api_format") == "baidu":
+                    extra = p.get("extra_body", {})
+                    appid = extra.get("baidu_appid", "") or p.get("baidu_appid", "")
+                    secret = extra.get("baidu_secret", "") or p.get("baidu_secret", "")
+                    ok, msg = test_baidu_connection(appid, secret)
+                else:
+                    ok, msg = test_connection(
+                        p.get("endpoint", ""), p.get("api_key", ""),
+                        p.get("model", ""), api_format=p.get("api_format", "openai")
+                    )
+                if not ok:
+                    ok_all = False
+                msgs.append(f"{label}: {msg}")
+            except Exception as e:
+                ok_all = False
+                msgs.append(f"{label}: {e}")
+
+        result_msg = "\n".join(msgs)
+        if ok_all:
             self.overlay.root.after(0, lambda: self.overlay.add_message(
-                "System", "API 连通性测试", msg, is_self=True
+                "System", "API 连通性测试", result_msg, is_self=True
             ))
         else:
             self.overlay.root.after(0, lambda: self.overlay.add_message(
-                "System", "API 连通性测试失败", msg, is_self=True
+                "System", "API 连通性测试失败", result_msg, is_self=True
             ))
 
     def _setup_tray(self):
@@ -482,8 +496,7 @@ class SettingsDialog:
             ("api", "API 配置"),
             ("hotkeys", "快捷键"),
             ("appearance", "外观"),
-            ("logs", "📋 翻译器日志"),
-            ("messages", "💬 消息日志"),
+            ("logs", "📋 日志"),
             ("ad", "📢 广告发送"),
         ]
         for i, (key, label) in enumerate(tab_names):
@@ -511,7 +524,6 @@ class SettingsDialog:
         self._build_hotkeys_tab()
         self._build_appearance_tab()
         self._build_logs_tab()
-        self._build_messages_tab()
         self._build_ad_tab()
 
         # ---- bottom buttons (always visible, outside tabs) ----
@@ -618,39 +630,13 @@ class SettingsDialog:
         self._pill_btn(add_row, "+ 添加 Provider", self._add_provider, accent=False).pack(side=tk.LEFT)
         self._pill_btn(add_row, "📦 预设", self._add_provider_from_preset, accent=True).pack(side=tk.LEFT, padx=(8, 0))
 
-        # Provider mode selection
-        self._section_label(inner, "PROVIDER MODE  /  调用模式").pack(fill=tk.X, pady=(8, 8))
-        mode_card = self._card(inner, padx=16, pady=12)
-        mode_card.pack(fill=tk.X, pady=(0, 4))
-
-        self.provider_mode_var = tk.StringVar(value=self.cfg.provider_mode)
-        mode_frame = tk.Frame(mode_card, bg=self._CARD_BG)
-        for val, lbl in [("race", "Race / 竞速（并行，谁快用谁）"),
-                         ("sequential", "Sequential / 顺序（逐个尝试，超时回退）")]:
-            rb = tk.Radiobutton(mode_frame, text=lbl, variable=self.provider_mode_var, value=val,
-                                bg=self._CARD_BG, fg=self._TEXT,
-                                font=("Microsoft YaHei", 10),
-                                selectcolor=self._CARD_BG,
-                                activebackground=self._CARD_BG,
-                                activeforeground=self._ACCENT)
-            rb.pack(anchor=tk.W, pady=2)
-        mode_frame.pack(fill=tk.X, padx=16, pady=8)
-
-        # Backend + target language (compact row card)
-        self._section_label(inner, "BACKEND & LANGUAGE  /  后端与语言").pack(fill=tk.X, pady=(8, 8))
+        # Language settings (compact row card)
+        self._section_label(inner, "LANGUAGE  /  语言设置").pack(fill=tk.X, pady=(8, 8))
         card_meta = self._card(inner, padx=16, pady=12)
         card_meta.pack(fill=tk.X, pady=(0, 4))
         card_meta.columnconfigure(1, weight=1)
 
         r = 0
-        self.backend_var = tk.StringVar(value=self.cfg.translation_backend)
-        self.backend_combo = ttk.Combobox(
-            card_meta, textvariable=self.backend_var,
-            values=["llm", "baidu", "llm+baidu"],
-            state="readonly", width=18, font=("Microsoft YaHei", 10))
-        self.backend_combo.bind("<<ComboboxSelected>>", self._on_backend_changed)
-        r = self._row(card_meta, r, "Backend / 翻译后端", self.backend_combo)
-
         self._lang_map: dict[str, str] = {
             "简体中文": "zh-CN", "英语": "en", "日语": "ja", "韩语": "ko",
             "法语": "fr", "德语": "de", "西班牙语": "es",
@@ -670,36 +656,6 @@ class SettingsDialog:
             values=list(self._lang_map.keys()),
             state="readonly", width=18, font=("Microsoft YaHei", 10))
         r = self._row(card_meta, r, "Send Language / 发送目标语言", self.send_lang_combo)
-
-        # Baidu sub-card (rounded)
-        self._section_label(inner, "BAIDU TRANSLATE  /  百度翻译").pack(fill=tk.X, pady=(8, 8))
-        self.baidu_group = self._card(inner)
-        self.baidu_group.pack(fill=tk.X, pady=(0, 4))
-        self.baidu_group.columnconfigure(1, weight=1)
-        tk.Label(self.baidu_group, text="Baidu Translate",
-                 bg=self._CARD_BG, fg=self._TEXT_SEC,
-                 font=("Microsoft YaHei", 8, "bold"), anchor=tk.W).grid(
-            row=0, column=0, columnspan=2, sticky=tk.W, padx=12, pady=(8, 2))
-        self.baidu_appid_entry = self._entry(self.baidu_group, width=42)
-        self.baidu_appid_entry.grid(row=1, column=0, columnspan=2, sticky=tk.EW,
-                                     padx=12, pady=(4, 2))
-        tk.Label(self.baidu_group, text="APP ID",
-                 bg=self._CARD_BG, fg=self._TEXT_SEC,
-                 font=("Microsoft YaHei", 8), anchor=tk.W).grid(
-            row=2, column=0, sticky=tk.W, padx=12, pady=(0, 2))
-        self.baidu_secret_entry = self._entry(self.baidu_group, show="*", width=42)
-        self.baidu_secret_entry.grid(row=3, column=0, columnspan=2, sticky=tk.EW,
-                                      padx=12, pady=(4, 2))
-        tk.Label(self.baidu_group, text="Secret / 密钥",
-                 bg=self._CARD_BG, fg=self._TEXT_SEC,
-                 font=("Microsoft YaHei", 8), anchor=tk.W).grid(
-            row=4, column=0, sticky=tk.W, padx=12, pady=(0, 2))
-        tk.Label(self.baidu_group,
-                 text="免费申请  fanyi-api.baidu.com  ·  标准版每月 500 万字符",
-                 bg=self._CARD_BG, fg=self._TEXT_SEC,
-                 font=("Microsoft YaHei", 7)).grid(
-            row=5, column=0, columnspan=2, sticky=tk.W, padx=12, pady=(2, 10))
-        self._on_backend_changed()
 
         # Test button row
         btn_row = tk.Frame(inner, bg=self._PAGE_BG)
@@ -883,40 +839,7 @@ class SettingsDialog:
 
         self._pill_btn(btn_row, "📂 打开日志文件夹", self._open_log_dir, accent=False).pack(side=tk.LEFT)
         self._pill_btn(btn_row, "🔄 刷新", self._refresh_logs, accent=False).pack(side=tk.LEFT, padx=(8, 0))
-        self._pill_btn(btn_row, "🗑 删除日志", self._delete_translator_logs, accent=False).pack(side=tk.RIGHT)
-
-    def _build_messages_tab(self):
-        """Build the message log tab — shows recent translated chat messages."""
-        frame = self._tab_frames["messages"] = tk.Frame(self._content_area, bg=self._PAGE_BG)
-        frame.rowconfigure(0, weight=1)
-        frame.columnconfigure(0, weight=1)
-
-        self.msg_text = tk.Text(
-            frame,
-            font=("Microsoft YaHei", 10),
-            bg=self._INPUT_BG, fg=self._TEXT,
-            wrap=tk.WORD, state=tk.DISABLED,
-            borderwidth=1, highlightthickness=1,
-            highlightbackground=self._INPUT_BORDER,
-            padx=10, pady=10,
-            insertbackground=self._TEXT,
-        )
-        vbar = ttk.Scrollbar(frame, orient=tk.VERTICAL, command=self.msg_text.yview)
-        self.msg_text.configure(yscrollcommand=vbar.set)
-        self.msg_text.grid(row=0, column=0, sticky="nsew")
-        vbar.grid(row=0, column=1, sticky="ns")
-
-        self.msg_text.tag_configure("player", foreground=self._ACCENT, font=("Microsoft YaHei", 10, "bold"))
-        self.msg_text.tag_configure("trans", foreground="#4ec9b0")
-        self.msg_text.tag_configure("original", foreground=self._TEXT_SEC)
-        self.msg_text.tag_configure("self_tag", foreground="#f59e0b")
-        self.msg_text.tag_configure("sep", foreground=self._CARD_BORDER)
-
-        btn_row = tk.Frame(frame, bg=self._PAGE_BG)
-        btn_row.grid(row=1, column=0, columnspan=2, sticky="ew", pady=(8, 4), padx=8)
-        self._pill_btn(btn_row, "🔄 刷新", self._refresh_messages, accent=False).pack(side=tk.LEFT)
-        self._pill_btn(btn_row, "📂 打开日志文件夹", self._open_log_dir, accent=False).pack(side=tk.LEFT, padx=(8, 0))
-        self._pill_btn(btn_row, "🗑 删除日志", self._delete_message_logs, accent=False).pack(side=tk.RIGHT)
+        self._pill_btn(btn_row, "🗑 删除日志", self._delete_logs, accent=False).pack(side=tk.RIGHT)
 
     # ------------------------------------------------------------------
     #  ad sender tab
@@ -1208,27 +1131,6 @@ class SettingsDialog:
         self.ad_start_btn.bind("<Leave>", lambda e: self.ad_start_btn.configure(bg="#3cb371"))
         self._ad_append_log("已暂停")
 
-    def _refresh_messages(self):
-        """Reload message log from the overlay window."""
-        if not hasattr(self, 'msg_text') or not self.overlay:
-            return
-        msgs = self.overlay.get_recent_messages()
-        self.msg_text.configure(state=tk.NORMAL)
-        self.msg_text.delete("1.0", tk.END)
-        for player, orig, trans, is_self in msgs:
-            prefix = "(You) " if is_self else ""
-            self.msg_text.insert(tk.END, f"{prefix}[", "self_tag" if is_self else "player")
-            self.msg_text.insert(tk.END, f"{player}", "self_tag" if is_self else "player")
-            self.msg_text.insert(tk.END, "] ", "player")
-            self.msg_text.insert(tk.END, f"{orig}", "original")
-            if trans != orig:
-                self.msg_text.insert(tk.END, " → ", "sep")
-                self.msg_text.insert(tk.END, f"{trans}\n", "trans")
-            else:
-                self.msg_text.insert(tk.END, "\n")
-        self.msg_text.configure(state=tk.DISABLED)
-        self.msg_text.see(tk.END)
-
     def _on_settings_mousewheel(self, event) -> None:
         """Global mousewheel handler — scrolls the active tab's canvas."""
         canvas = self._canvases.get(self._active_tab)
@@ -1250,8 +1152,6 @@ class SettingsDialog:
         self._active_tab = key
         if key == "logs":
             self._refresh_logs()
-        if key == "messages":
-            self._refresh_messages()
 
     def _tab_hover_leave(self, btn: tk.Label, key: str) -> None:
         if self._active_tab == key:
@@ -1284,23 +1184,14 @@ class SettingsDialog:
             if os.path.isdir(log_dir):
                 os.startfile(log_dir)
 
-    def _delete_translator_logs(self) -> None:
-        """Delete translator log files, show result, refresh UI."""
+    def _delete_logs(self) -> None:
+        """Delete all log files, show result, refresh UI."""
         log = get_logger()
         if log:
-            n = log.delete_translator_logs()
+            n = log.delete_all_logs()
             self._refresh_logs()
             messagebox.showinfo("删除完成",
-                f"已删除 {n} 个翻译器日志文件", parent=self.top)
-
-    def _delete_message_logs(self) -> None:
-        """Delete message log files, show result, refresh UI."""
-        log = get_logger()
-        if log:
-            n = log.delete_message_logs()
-            self._refresh_messages()
-            messagebox.showinfo("删除完成",
-                f"已删除 {n} 个消息日志文件", parent=self.top)
+                f"已删除 {n} 个日志文件", parent=self.top)
 
     def _on_log_mousewheel(self, event) -> None:
         self.log_text.yview_scroll(int(-1 * (event.delta / 120)), "units")
@@ -1337,13 +1228,6 @@ class SettingsDialog:
     # ------------------------------------------------------------------
     #  the rest is unchanged
     # ------------------------------------------------------------------
-    def _on_backend_changed(self, event=None):
-        backend = self.backend_var.get()
-        if backend in ("baidu", "llm+baidu"):
-            self.baidu_group.pack(fill=tk.X, pady=(0, 4))
-        else:
-            self.baidu_group.pack_forget()
-
     # ------------------------------------------------------------------
     #  provider list management
     # ------------------------------------------------------------------
@@ -1470,7 +1354,7 @@ class SettingsDialog:
                 self.cfg.llm_providers[i]["model"] = w["model_entry"].get().strip()
 
     def _test_all_providers(self):
-        """Test connectivity for all enabled providers + Baidu."""
+        """Test connectivity for all enabled providers."""
         self._gather_providers()
         self._test_status.config(text="正在测试...", fg=self._TEXT_SEC)
         self._test_btn.configure(state=tk.DISABLED)
@@ -1481,16 +1365,19 @@ class SettingsDialog:
             results = []
             for p in self.cfg.llm_providers:
                 if p.get("enabled", True):
-                    ok, msg = test_connection(p["endpoint"], p["api_key"], p["model"])
+                    api_format = p.get("api_format", "openai")
+                    if api_format == "baidu":
+                        extra = p.get("extra_body", {})
+                        appid = extra.get("baidu_appid", "") or p.get("baidu_appid", "")
+                        secret = extra.get("baidu_secret", "") or p.get("baidu_secret", "")
+                        ok, msg = test_baidu_connection(appid, secret)
+                    else:
+                        ok, msg = test_connection(p["endpoint"], p["api_key"], p["model"],
+                                                  api_format=api_format)
                     results.append(f"{p['label']}: {'✓' if ok else '✗'} {msg}")
-            baidu_appid = self.baidu_appid_entry.get().strip()
-            baidu_secret = self.baidu_secret_entry.get().strip()
-            if baidu_appid and baidu_secret:
-                ok, msg = test_baidu_connection(baidu_appid, baidu_secret)
-                results.append(f"百度: {'✓' if ok else '✗'} {msg}")
             self.top.after(0, lambda: self._on_test_result(
-                all("✓" in r for r in results),
-                "\n".join(results)
+                all("✓" in r for r in results) if results else True,
+                "\n".join(results) if results else "没有启用的 Provider"
             ))
 
         threading.Thread(target=run_test, daemon=True).start()
@@ -1502,16 +1389,12 @@ class SettingsDialog:
     def _load_values(self):
         self.lang_var.set(self._lang_rev.get(self.cfg.target_language, "简体中文"))
         self.send_lang_var.set(self._lang_rev.get(self.cfg.send_target_language, "英语"))
-        self.baidu_appid_entry.insert(0, self.cfg.baidu_appid)
-        self.baidu_secret_entry.insert(0, self.cfg.baidu_secret)
         self.name_entry.insert(0, self.cfg.player_name)
         self.opacity_scale.set(self.cfg.window_opacity)
         self._on_opacity_change(self.cfg.window_opacity)
         self.font_spin.set(str(self.cfg.font_size))
         self.max_spin.set(str(self.cfg.max_messages))
-        self.backend_var.set(self.cfg.translation_backend)
         self._rebuild_provider_list()
-        self._on_backend_changed()
         # 恢复广告发送数据
         for i in range(5):
             if i < len(self.cfg.ad_messages):
@@ -1538,15 +1421,11 @@ class SettingsDialog:
             max_messages=int(self.max_spin.get()),
             window_mode=self.mode_var.get(),
             click_through=self.click_var.get(),
-            translation_backend=self.backend_var.get(),
             target_language=self._lang_map.get(self.lang_var.get(), "zh-CN"),
             send_target_language=self._lang_map.get(self.send_lang_var.get(), "en"),
-            provider_mode=self.provider_mode_var.get(),
             show_language_label=self.lang_label_var.get(),
             ad_messages=[a.get("1.0", tk.END).strip() for a in self._ad_message_areas],
             ad_countdown=self.ad_countdown_entry.get().strip(),
-            baidu_appid=self.baidu_appid_entry.get().strip(),
-            baidu_secret=self.baidu_secret_entry.get().strip(),
         )
         # Save settings dialog size
         try:
@@ -1566,16 +1445,20 @@ def main():
 
     app = App()
     need_setup = False
-    backend = app.cfg.translation_backend
-    if backend == "baidu":
-        if not app.cfg.baidu_appid or not app.cfg.baidu_secret:
-            need_setup = True
-    elif backend == "llm+baidu":
-        if not app.cfg.api_key or not app.cfg.baidu_appid or not app.cfg.baidu_secret:
-            need_setup = True
+    providers = [p for p in app.cfg.llm_providers if p.get("enabled", True)]
+    if not providers:
+        need_setup = True
     else:
-        if not app.cfg.api_key:
-            need_setup = True
+        for p in providers:
+            if p.get("api_format") == "baidu":
+                extra = p.get("extra_body", {})
+                if not extra.get("baidu_appid") and not p.get("baidu_appid"):
+                    need_setup = True
+                    break
+            else:
+                if not p.get("api_key"):
+                    need_setup = True
+                    break
 
     if need_setup:
         app.overlay.root.after(500, app._open_settings)
