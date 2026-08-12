@@ -783,11 +783,11 @@ def test_connection(endpoint: str, api_key: str, model: str) -> tuple:
 
 SEND_SYSTEM_PROMPT = get_send_prompt()
 
-# Language display name mapping (English names for prompt use)
+# Language display name mapping (Chinese names)
 _LANG_DISPLAY_NAMES: dict[str, str] = {
-    "zh-CN": "Chinese", "en": "English", "ja": "Japanese", "ko": "Korean",
-    "fr": "French", "de": "German", "es": "Spanish",
-    "ru": "Russian", "pt": "Portuguese", "it": "Italian",
+    "zh-CN": "简体中文", "en": "英语", "ja": "日语", "ko": "韩语",
+    "fr": "法语", "de": "德语", "es": "西班牙语",
+    "ru": "俄语", "pt": "葡萄牙语", "it": "意大利语",
 }
 
 
