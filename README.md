@@ -1,7 +1,7 @@
 # 🚛 ETS2 TruckersMP Chat Translator · 欧卡联机聊天翻译器
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-v2.2.0-4494FC?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-v2.3.0-4494FC?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-10b981?style=for-the-badge" alt="License">
   <img src="https://img.shields.io/badge/platform-Windows%2010%2F11-0078D6?style=for-the-badge&logo=windows" alt="Platform">
   <img src="https://img.shields.io/badge/python-3.10%2B-3776AB?style=for-the-badge&logo=python" alt="Python">
@@ -42,7 +42,7 @@
 > [!TIP]
 > 🚛 在 ETS2 TruckersMP 联机中，自动将各国语言聊天实时翻译为简体中文，以现代毛玻璃悬浮窗显示。支持中文打字 → 自动翻译为英文 → 一键发送到游戏聊天。
 >
-> 🎨 **v2.2.0**：Win11 Mica / Win10 Acrylic 毛玻璃效果 · 多模型轮转负载均衡 · 统一日志系统 · 代码质量加固
+> 🎨 **v2.3.0**：五层术语处理（俚语本地秒翻）· Win11 Mica 毛玻璃 · 多模型轮转负载均衡 · system+user 发消息
 >
 > 💯 **完全免费 · 开源 · 无需安装 Python**
 
@@ -131,6 +131,14 @@
 ---
 
 ## 📋 Changelog · 更新日志
+
+### 🎨 v2.3.0 — 术语处理重构 + 翻译质量优化
+
+- **🧠 五层术语处理** — 本地俚语词典（约 110 条）+ 短语回退 + 结构化短语 + prompt 映射 + 后处理补译，俚语/ETS2 词汇直接本地命中零 API 调用
+- **🚀 system+user 发消息** — system+user 提示词结构、temperature=0、动态 max_tokens，DeepSeek/MiMo 自动关 thinking
+- **🛡️ 翻译质量加固** — 保留 @玩家名、未翻译校验触发轮转回退、prompt 加固抑制解释
+- **🐛 修复批量分隔符泄漏** — LLM 未按分隔符回显时逐条回退翻译，避免整段译文挂到第一条
+- **✨ ETS2 专有词汇接入** — truck/convoy/gas station 等直接本地命中
 
 ### 🔥 v2.2.0 — 热修复版本（代码质量加固）
 
@@ -232,7 +240,7 @@
 
 ### 方式一：📦 下载 exe 直接运行（推荐）
 
-从 [📥 GitHub Releases](https://github.com/BunNiuNai/Euro-Truck-Simulator-2-TruckersMP-In-Game-Translator/releases/latest) 下载最新 `ETS2-TruckersMP翻译器-v2.2.0.exe`，双击运行即可。
+从 [📥 GitHub Releases](https://github.com/BunNiuNai/Euro-Truck-Simulator-2-TruckersMP-In-Game-Translator/releases/latest) 下载最新 `ETS2-TruckersMP翻译器-v2.3.0.exe`，双击运行即可。
 
 > ✅ 无需安装 Python · 无需配置环境 · 开箱即用
 
@@ -254,7 +262,7 @@ python main.py
 
 ```bash
 python build_exe.py
-# 输出 → dist/ETS2-TruckersMP翻译器-v2.2.0.exe
+# 输出 → dist/ETS2-TruckersMP翻译器-v2.3.0.exe
 ```
 
 ---
@@ -334,11 +342,14 @@ python build_exe.py
                               │
                               ▼ (raw_queue, maxsize=500)
 ┌──────────────────────────────────────────────────────────────┐
-│  🧠 translator.py — 翻译引擎                                   │
-│  · LRU 缓存 1000 条 → 命中直接返回                             │
-│  · 批量模式：0.3s 窗口收集消息                                  │
+│  🧠 translator.py + chat_dictionary.py — 翻译引擎              │
+│  · 本地字典拦截：俚语/ETS2词汇直接命中，零 API 调用             │
+│  · 混合语言智能拆分：中文保留只译外语                            │
+│  · 批量模式：0.3s 窗口收集 + 同文本合并                         │
 │  · 多 Provider 轮转负载均衡 + 熔断回退                          │
-│  · 配置热重载：3 秒检测文件变化                                  │
+│  · system+user prompt（温度 0、动态 max_tokens）               │
+│  · 后处理：补译漏译缩写 + 保留@玩家名 + 未翻译校验              │
+│  · LRU 缓存 1000 条 · 配置热重载 3s                            │
 └──────────────────────────────────────────────────────────────┘
                               │
                               ▼ (display_queue, maxsize=500)
@@ -359,14 +370,16 @@ python build_exe.py
 
 ```
 📁 ets2-translator/
-├── 🚀 main.py              # 入口、主控、设置对话框
-├── ⚙️ config.py             # 配置模型、DPAPI 加密、JSON 读写
-├── 📡 monitor.py           # TMP 聊天日志监控（增量轮询、正则解析、服务器识别）
-├── 🧠 translator.py        # 翻译引擎（多Provider轮转、熔断、缓存、批量、混合语言拆分）
-├── 🪟 overlay.py           # 显示窗口（毛玻璃悬浮窗、grid 布局、Win32 API、输入栏、热键）
+├── 🚀 main.py              # 入口：App 主控、单实例锁、设置对话框、模块接线
+├── ⚙️ config.py             # 配置模型、DPAPI 加密、原子保存、v1→v2 迁移
+├── 📡 monitor.py           # TMP 聊天日志监控（增量轮询、正则解析、服务器/昵称识别）
+├── 🧠 translator.py        # 翻译引擎（轮转分流、熔断、缓存、批量、混合语言拆分、后处理）
+├── 📚 chat_dictionary.py   # 五层术语处理（俚语词典/短语回退/结构化短语/prompt映射/后处理补译 + ETS2词汇）
+├── 🪟 overlay.py           # 显示窗口（毛玻璃悬浮窗、双模式、Win32 API、输入栏、热键）
 ├── 🪟 acrylic_helper.py    # Win32 亚克力/云母毛玻璃效果（Win11 Mica + Win10 Acrylic）
 ├── ⌨️ hotkey_manager.py     # 系统热键管理（RegisterHotKey + 消息窗口）
 ├── 📨 input_sender.py      # 键盘模拟（SendInput API、剪贴板）
+├── 📤 compose_sender.py    # 自动发送编排（翻译→发送→日志确认→剪贴板恢复）
 ├── 📋 tray_icon.py         # 系统托盘（纯 ctypes + Win32 API）
 ├── 🎨 settings_ui.py       # 设置 UI（Provider 预设选择、模型拉取、连通测试）
 ├── 📦 provider_presets.py  # 内置 20+ LLM 供应商预设模板
@@ -376,10 +389,11 @@ python build_exe.py
 ├── 💬 message_display.py   # 消息渲染引擎
 ├── 📦 message_types.py     # 数据类（DisplayMessage / TranslationStats）
 ├── 📝 logger.py            # 日志模块（文件轮转 + 内存缓冲）
-├── 📄 requirements.txt     # Python 依赖
+├── 🧪 test_*.py            # 单元测试（词典/翻译/日志/混合语言等）
+├── 📄 requirements.txt     # Python 依赖（仅 httpx）
 ├── 🎨 icon.ico             # 程序图标
 └── 📦 dist/                # 构建输出
-    └── ETS2-TruckersMP翻译器-v2.2.0.exe
+    └── ETS2-TruckersMP翻译器-v2.3.0.exe
 ```
 
 ---
