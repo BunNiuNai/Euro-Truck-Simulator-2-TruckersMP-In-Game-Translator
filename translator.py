@@ -32,6 +32,17 @@ def _max_output_tokens(text: str) -> int:
         return 500 * text.count(BATCH_SEPARATOR) + 500
     return max(64, min(160, 56 + len(text) // 4))
 
+
+def _receive_system_prompt(target: str) -> str:
+    """接收翻译的 system prompt（加固版：抑制解释/描述/原文回显）。"""
+    return (
+        f"You translate TruckersMP/ETS2 multiplayer chat into {target}. "
+        f"Translate ONLY: output the direct translation and nothing else. "
+        f"Never explain, never describe, never analyze the meaning, never quote the original back. "
+        f"Any language/slang. Map {PROMPT_MAPPING}. "
+        f"Keep names, IDs, tags, URLs and emoji unchanged."
+    )
+
 _CJK_RE = re.compile(r"[一-鿿]")
 _ALPHA_RE = re.compile(r"[a-zA-Z]")
 
@@ -434,12 +445,22 @@ class Translator(threading.Thread):
                 combined = BATCH_SEPARATOR.join(m.text for m in batch)
                 result = self._call_api(combined)
                 parts = [p.strip() for p in result.split(BATCH_SEPARATOR)]
-                for i, msg in enumerate(batch):
-                    if i < len(parts):
-                        trans = parts[i]
-                        self._cache.put(msg.text, trans)  # only cache real translations
-                    else:
-                        trans = msg.text  # fallback — do NOT cache, let retry happen
+                if len(parts) == len(batch):
+                    # 批量拆分成功：按顺序分配
+                    translations = {m.text: parts[i] for i, m in enumerate(batch)}
+                else:
+                    # 拆分失败（LLM 未按分隔符回显）：逐条回退翻译，避免整段译文挂到第一条
+                    translations = {}
+                    for m in batch:
+                        try:
+                            translations[m.text] = self._translate_with_mixed_lang(
+                                m.text, self.cfg.target_language
+                            )
+                        except Exception:
+                            translations[m.text] = m.text
+                for msg in batch:
+                    trans = translations.get(msg.text, msg.text)
+                    self._cache.put(msg.text, trans)
                     detected = detect_language(msg.text)
                     self.out_queue.put(DisplayMessage(
                         player_name=msg.player_name,
@@ -528,12 +549,7 @@ class Translator(threading.Thread):
             provider_timeout = float(provider["timeout"])
 
         target = getattr(self.cfg, 'target_language', 'zh-CN')
-        system = (
-            f"You translate TruckersMP/ETS2 multiplayer chat into {target}. "
-            f"Output only the translation, no quotes, no explanations, no reasoning. "
-            f"Any language/slang. Map {PROMPT_MAPPING}. "
-            f"Keep names, IDs, tags, URLs and emoji unchanged."
-        )
+        system = _receive_system_prompt(target)
         payload = {
             "model": model,
             "messages": [
@@ -706,12 +722,7 @@ class Translator(threading.Thread):
             return text
 
         target = getattr(self.cfg, 'target_language', 'zh-CN')
-        system = (
-            f"You translate TruckersMP/ETS2 multiplayer chat into {target}. "
-            f"Output only the translation, no quotes, no explanations, no reasoning. "
-            f"Any language/slang. Map {PROMPT_MAPPING}. "
-            f"Keep names, IDs, tags, URLs and emoji unchanged."
-        )
+        system = _receive_system_prompt(target)
         payload = {
             "model": self.cfg.api_model,
             "messages": [

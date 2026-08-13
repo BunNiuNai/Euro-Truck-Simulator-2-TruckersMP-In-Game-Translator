@@ -5,10 +5,10 @@ import sys
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 
 from queue import Queue
-from unittest.mock import patch
+from unittest.mock import patch, MagicMock
 
 from config import AppConfig
-from translator import Translator, _max_output_tokens
+from translator import Translator, _max_output_tokens, _receive_system_prompt
 
 
 def test_max_output_tokens_clamped():
@@ -79,3 +79,60 @@ def test_deepseek_thinking_disabled():
         payload = mock_client.post.call_args.kwargs["json"]
 
     assert payload.get("thinking") == {"type": "disabled"}
+
+
+def test_receive_prompt_forbids_explanation():
+    system = _receive_system_prompt("zh-CN")
+    assert "Translate ONLY" in system
+    assert "Never explain" in system
+    assert "never analyze" in system
+    assert "never quote the original back" in system
+
+
+def test_batch_split_failure_falls_back_to_individual():
+    cfg = AppConfig()
+    cfg.target_language = "zh-CN"
+    t = Translator(cfg, Queue(), Queue())
+
+    msgs = []
+    for text in ["msg1", "msg2", "msg3"]:
+        m = MagicMock()
+        m.text = text
+        m.player_name = "p"
+        m.timestamp = "00:00:00"
+        m.is_system = False
+        msgs.append(m)
+
+    # _call_api 返回一个不含分隔符的整体结果 → 拆分失败
+    t._call_api = MagicMock(return_value="one blob without separator")
+    t._translate_with_mixed_lang = MagicMock(
+        side_effect=lambda text, lang: f"译[{text}]"
+    )
+
+    t._flush_llm(msgs)
+
+    # 应逐条回退翻译 3 次
+    assert t._translate_with_mixed_lang.call_count == 3
+
+
+def test_batch_split_success_does_not_fallback():
+    cfg = AppConfig()
+    cfg.target_language = "zh-CN"
+    t = Translator(cfg, Queue(), Queue())
+
+    msgs = []
+    for text in ["msg1", "msg2"]:
+        m = MagicMock()
+        m.text = text
+        m.player_name = "p"
+        m.timestamp = "00:00:00"
+        m.is_system = False
+        msgs.append(m)
+
+    # 正确回显分隔符 → 拆分成功，无需回退
+    t._call_api = MagicMock(return_value="译1\n---\n译2")
+    t._translate_with_mixed_lang = MagicMock()
+
+    t._flush_llm(msgs)
+
+    assert t._translate_with_mixed_lang.call_count == 0
