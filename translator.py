@@ -17,6 +17,20 @@ import httpx
 from config import AppConfig
 from logger import get_logger
 from message_types import DisplayMessage, TranslationStats
+from chat_dictionary import (
+    PROMPT_MAPPING,
+    fix_leftover_shorthand,
+    looks_untranslated,
+    preserve_mention_prefix,
+    short_phrase_fallback,
+)
+
+
+def _max_output_tokens(text: str) -> int:
+    """按输入长度动态计算 max_tokens（移植对方 MaxOutputTokensForChat）。"""
+    if BATCH_SEPARATOR in text:
+        return 500 * text.count(BATCH_SEPARATOR) + 500
+    return max(64, min(160, 56 + len(text) // 4))
 
 _CJK_RE = re.compile(r"[一-鿿]")
 _ALPHA_RE = re.compile(r"[a-zA-Z]")
@@ -513,14 +527,26 @@ class Translator(threading.Thread):
         if "timeout" in provider and isinstance(provider["timeout"], (int, float)):
             provider_timeout = float(provider["timeout"])
 
+        target = getattr(self.cfg, 'target_language', 'zh-CN')
+        system = (
+            f"You translate TruckersMP/ETS2 multiplayer chat into {target}. "
+            f"Output only the translation, no quotes, no explanations, no reasoning. "
+            f"Any language/slang. Map {PROMPT_MAPPING}. "
+            f"Keep names, IDs, tags, URLs and emoji unchanged."
+        )
         payload = {
             "model": model,
             "messages": [
-                {"role": "user", "content": f'把以下文字翻译成简体中文，只输出译文：{text}'},
+                {"role": "system", "content": system},
+                {"role": "user", "content": text},
             ],
-            "temperature": 0.2,
-            "max_tokens": 500 if BATCH_SEPARATOR not in text else 500 * text.count(BATCH_SEPARATOR) + 500,
+            "temperature": 0,
+            "max_tokens": _max_output_tokens(text),
         }
+        # DeepSeek / MiMo 关闭 thinking（避免思考链消耗 token）
+        kind = (provider.get("label", "") + " " + provider.get("model", "")).lower()
+        if "deepseek" in kind or "mimo" in kind or "xiaomi" in kind:
+            payload["thinking"] = {"type": "disabled"}
 
         # Merge extra_body fields (user-specified overrides, e.g. temperature)
         extra_body = provider.get("extra_body", {})
@@ -560,6 +586,11 @@ class Translator(threading.Thread):
         if self._should_skip(text):
             return text
 
+        # 本地字典拦截：俚语/短语直接命中，零 API 调用
+        quick = short_phrase_fallback(text)
+        if quick:
+            return quick
+
         # Request merging: wait for identical in-flight request
         existing = None
         with self._in_flight_lock:
@@ -581,6 +612,10 @@ class Translator(threading.Thread):
             result, provider_label, model = self._call_api_internal(text)
             self._last_provider = provider_label
             self._last_model = model
+            # 后处理：补译漏译缩写 + 保留 @mention（仅单条消息，批量不做）
+            if BATCH_SEPARATOR not in text:
+                result = fix_leftover_shorthand(result)
+                result = preserve_mention_prefix(text, result)
             with self._in_flight_lock:
                 self._in_flight_results[text] = result
             return result
@@ -618,6 +653,8 @@ class Translator(threading.Thread):
         # Try selected provider
         try:
             result = self._call_provider(selected, text)
+            if looks_untranslated(text, result, self.cfg.target_language):
+                raise Exception("returned original/non-target text")
             self._note_provider_result(label, True)
             if log:
                 log.info("LLM", f"轮转成功 [{idx}/{len(active)}]: {label}")
@@ -635,6 +672,8 @@ class Translator(threading.Thread):
             cmodel = candidate.get("model", "")
             try:
                 result = self._call_provider(candidate, text)
+                if looks_untranslated(text, result, self.cfg.target_language):
+                    raise Exception("returned original/non-target text")
                 self._note_provider_result(clabel, True)
                 if log:
                     log.info("LLM", f"回退成功 [{offset}]: {clabel}")
@@ -651,6 +690,8 @@ class Translator(threading.Thread):
             pmodel = p.get("model", "")
             try:
                 result = self._call_provider(p, text, timeout=8.0)
+                if looks_untranslated(text, result, self.cfg.target_language):
+                    raise Exception("returned original/non-target text")
                 self._note_provider_result(plabel, True)
                 return result, plabel, pmodel
             except Exception:
@@ -664,13 +705,21 @@ class Translator(threading.Thread):
         if self._should_skip(text):
             return text
 
+        target = getattr(self.cfg, 'target_language', 'zh-CN')
+        system = (
+            f"You translate TruckersMP/ETS2 multiplayer chat into {target}. "
+            f"Output only the translation, no quotes, no explanations, no reasoning. "
+            f"Any language/slang. Map {PROMPT_MAPPING}. "
+            f"Keep names, IDs, tags, URLs and emoji unchanged."
+        )
         payload = {
             "model": self.cfg.api_model,
             "messages": [
-                {"role": "user", "content": f'把以下文字翻译成简体中文，只输出译文：{text}'},
+                {"role": "system", "content": system},
+                {"role": "user", "content": text},
             ],
-            "temperature": 0.2,
-            "max_tokens": 500 if BATCH_SEPARATOR not in text else 500 * text.count(BATCH_SEPARATOR) + 500,
+            "temperature": 0,
+            "max_tokens": _max_output_tokens(text),
         }
 
         headers = {
@@ -801,17 +850,18 @@ def _should_skip_internal(text: str, target_lang: str) -> bool:
 def _call_single_provider(p: dict, text: str, target_lang: str, cfg: AppConfig) -> str:
     """Call a single LLM provider for send translation."""
     lang_name = _SEND_LANG_NAMES.get(target_lang, "英语")
-    user_msg = f'帮我把"{text}"翻译成{lang_name}'
+    system = f"You translate into {lang_name}. Output only the translation, no quotes, no explanations."
     ep = p["endpoint"].strip()
     if not ep.startswith(("http://", "https://")):
         ep = "https://" + ep
     payload = {
         "model": p["model"],
         "messages": [
-            {"role": "user", "content": user_msg},
+            {"role": "system", "content": system},
+            {"role": "user", "content": text},
         ],
-        "temperature": 0.3,
-        "max_tokens": 300,
+        "temperature": 0,
+        "max_tokens": _max_output_tokens(text),
     }
     # Merge extra_body fields
     extra_body = p.get("extra_body", {})
@@ -844,17 +894,18 @@ def _call_single_provider(p: dict, text: str, target_lang: str, cfg: AppConfig) 
 def _legacy_send_translate(cfg: AppConfig, text: str, target_lang: str) -> str:
     """Legacy single-API fallback for send translation (no providers configured)."""
     lang_name = _SEND_LANG_NAMES.get(target_lang, "英语")
-    user_msg = f'帮我把"{text}"翻译成{lang_name}'
+    system = f"You translate into {lang_name}. Output only the translation, no quotes, no explanations."
     endpoint = cfg.api_endpoint.strip()
     if not endpoint.startswith(("http://", "https://")):
         endpoint = "https://" + endpoint
     payload = {
         "model": cfg.api_model,
         "messages": [
-            {"role": "user", "content": user_msg},
+            {"role": "system", "content": system},
+            {"role": "user", "content": text},
         ],
-        "temperature": 0.3,
-        "max_tokens": 300,
+        "temperature": 0,
+        "max_tokens": _max_output_tokens(text),
     }
     headers = {
         "Content-Type": "application/json",
