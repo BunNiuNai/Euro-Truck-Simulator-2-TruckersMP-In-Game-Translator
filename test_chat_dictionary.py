@@ -55,6 +55,16 @@ def test_ets2_term_present():
     assert ETS2_TERMS["convoy"] == "车队"
 
 
+def test_ets2_term_single_word_hit():
+    assert short_phrase_fallback("truck") == "卡车"
+    assert short_phrase_fallback("convoy") == "车队"
+
+
+def test_ets2_term_multiword_hit():
+    assert short_phrase_fallback("gas station") == "加油站"
+    assert short_phrase_fallback("speed limit") == "限速"
+
+
 # ── 第5层：后处理补译 ──
 
 def test_fix_leftover_shorthand():

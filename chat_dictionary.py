@@ -254,9 +254,11 @@ def short_phrase_fallback(text):
         return ''
     edge = _trim_edge_punctuation(lower)
 
-    # 1) 完整短语精确匹配
+    # 1) 完整短语精确匹配（俚语短语 + ETS2 多词术语）
     if edge in PHRASE_FALLBACK:
         return PHRASE_FALLBACK[edge]
+    if edge in ETS2_TERMS:
+        return ETS2_TERMS[edge]
     squeezed = _squeeze_repeated(edge)
     for key, val in PHRASE_FALLBACK.items():
         if squeezed == _squeeze_repeated(key):
@@ -264,9 +266,12 @@ def short_phrase_fallback(text):
 
     words = _split_words(lower)
 
-    # 2) 单词级 token 匹配
-    if len(words) == 1 and words[0] in SLANG_TOKENS:
-        return SLANG_TOKENS[words[0]][0]
+    # 2) 单词级匹配（俚语 + ETS2 单词）
+    if len(words) == 1:
+        if words[0] in SLANG_TOKENS:
+            return SLANG_TOKENS[words[0]][0]
+        if words[0] in ETS2_TERMS:
+            return ETS2_TERMS[words[0]]
 
     # 3) 结构化短语
     for start in range(min(len(words), 3)):
