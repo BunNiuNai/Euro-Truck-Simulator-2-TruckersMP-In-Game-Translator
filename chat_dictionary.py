@@ -1,7 +1,7 @@
 """五层术语处理：本地俚语词典 + 短语回退 + 结构化短语 + prompt 映射 + 后处理补译。
 
 数据来源：Seven-TMP/ets2-chat-translator 的 translate_engine.cpp（直接移植），
-ETS2 专有词汇来自原 receive_prompt.txt。
+ETS2 专有词汇为保留的原术语库。
 """
 import re
 
@@ -122,10 +122,10 @@ SYSTEM_MESSAGE_FALLBACK = {
 }
 
 # ─────────────────────────────────────────────────────────────
-# 保留的 ETS2 专有词汇（来自原 receive_prompt.txt）
+# 保留的 ETS2 专有词汇
 # ─────────────────────────────────────────────────────────────
 ETS2_TERMS = {
-    "truck": "卡车", "trailer": "挂车", "cargo": "货物", "load": "货物",
+    "truck": "卡车", "trailer": "挂车", "cargo": "货物",
     "job": "任务", "delivery": "任务", "convoy": "车队", "route": "路线",
     "destination": "目的地", "garage": "车库", "rest stop": "休息区",
     "parking": "休息区", "gas station": "加油站", "repair shop": "维修站",

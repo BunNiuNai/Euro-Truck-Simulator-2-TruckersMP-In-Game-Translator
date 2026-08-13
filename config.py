@@ -165,53 +165,6 @@ CONFIG_PATH = os.path.join(CONFIG_DIR, "config.json")
 
 
 
-# ── Prompt loading from external files ──
-
-_PROMPTS_DIR = os.path.join(os.path.dirname(os.path.abspath(__file__)), "prompts")
-
-
-def load_prompt(name: str) -> str:
-    """Load a prompt template from the prompts/ directory."""
-    path = os.path.join(_PROMPTS_DIR, name)
-    if os.path.exists(path):
-        with open(path, "r", encoding="utf-8") as f:
-            return f.read()
-    return ""
-
-
-def get_receive_prompt() -> str:
-    """Get the English→Chinese translation prompt."""
-    prompt = load_prompt("receive_prompt.txt")
-    if not prompt:
-        return (
-            "You are a translator for ETS2/TruckersMP in-game chat. "
-            "Translate ALL messages into natural, accurate Simplified Chinese. "
-            "Never summarize, never omit, never add — TRANSLATE ONLY."
-        )
-    return prompt
-
-
-def get_send_prompt(target_lang: str = "en") -> str:
-    """Get the send translation prompt for a specific target language.
-    Loads from prompts/send/{target_lang}.txt, falls back to English."""
-    prompt = load_prompt(f"send/{target_lang}.txt")
-    if prompt:
-        return prompt
-    # Fallback: try English
-    prompt = load_prompt("send/en.txt")
-    if prompt:
-        return prompt
-    # Hard fallback
-    return (
-        "You are a translator for ETS2/TruckersMP in-game chat. "
-        "Translate Chinese into natural, accurate English that a real gamer would type. "
-        "Never summarize, never omit, never add. Output ONLY the English translation."
-    )
-
-
-DEFAULT_SYSTEM_PROMPT = get_receive_prompt()
-
-
 @dataclass
 class ProviderConfig:
     """A single LLM provider configuration."""
@@ -240,7 +193,6 @@ class AppConfig:
     api_model: str = ""
     target_language: str = "zh-CN"
     send_target_language: str = "en"  # target language for sending translation
-    system_prompt: str = DEFAULT_SYSTEM_PROMPT
     window_opacity: float = 0.80
     font_size: int = 12
     max_messages: int = 50

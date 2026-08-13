@@ -1406,7 +1406,6 @@ class SettingsDialog:
             api_endpoint=first.get("endpoint", ""),
             api_key=first.get("api_key", ""),
             api_model=first.get("model", ""),
-            system_prompt=self.cfg.system_prompt,
             player_name=self.name_entry.get().strip(),
             copy_hotkey=self._copy_cap.get().strip().lower() or "ctrl+c",
             enter_hotkey=self._enter_cap.get().strip().lower() or "enter",
