@@ -26,3 +26,6 @@ Desktop.ini
 
 # User config (contains API keys)
 config.json
+
+# Claude worktrees (isolated workspaces)
+.claude/worktrees/
