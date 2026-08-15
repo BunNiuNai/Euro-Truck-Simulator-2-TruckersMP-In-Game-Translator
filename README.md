@@ -1,7 +1,7 @@
 # 🚛 ETS2 TruckersMP Chat Translator · 欧卡联机聊天翻译器
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-v2.3.0-4494FC?style=for-the-badge" alt="Version">
+  <img src="https://img.shields.io/badge/version-v2.3.1-4494FC?style=for-the-badge" alt="Version">
   <img src="https://img.shields.io/badge/license-MIT-10b981?style=for-the-badge" alt="License">
   <img src="https://img.shields.io/badge/platform-Windows%2010%2F11-0078D6?style=for-the-badge&logo=windows" alt="Platform">
   <img src="https://img.shields.io/badge/python-3.10%2B-3776AB?style=for-the-badge&logo=python" alt="Python">
@@ -42,7 +42,7 @@
 > [!TIP]
 > 🚛 在 ETS2 TruckersMP 联机中，自动将各国语言聊天实时翻译为简体中文，以现代毛玻璃悬浮窗显示。支持中文打字 → 自动翻译为英文 → 一键发送到游戏聊天。
 >
-> 🎨 **v2.3.0**：五层术语处理（俚语本地秒翻）· Win11 Mica 毛玻璃 · 多模型轮转负载均衡 · system+user 发消息
+> 🎨 **v2.3.1**：五层术语处理（俚语本地秒翻）· 多模型并行竞速 · 非文字跳过 · Win11 Mica 毛玻璃
 >
 > 💯 **完全免费 · 开源 · 无需安装 Python**
 
@@ -85,7 +85,7 @@
 
 | 🏷️ | 功能 | 说明 |
 |:---:|---|---|
-| 🔄 | **多模型轮转负载均衡** | 多个 LLM Provider 按轮转顺序分配翻译任务，避免排队等待 |
+| ⚡ | **多模型并行竞速** | 一条消息同时发给所有 Provider，谁先返回有效译文用谁 |
 | 📦 | **20+ Provider 预设** | 内置国内外主流 LLM 供应商模板，一键填入地址和模型 |
 | 📥 | **模型列表拉取** | 从 API 端点自动获取可用模型，无需手动查模型名 |
 | 🛡️ | **Provider 熔断回退** | 连续失败自动冷却，成功恢复；全部失败串行重试 |
@@ -131,6 +131,12 @@
 ---
 
 ## 📋 Changelog · 更新日志
+
+### ⚡ v2.3.1 — 非文字跳过 + 多模型竞速 + 新图标
+
+- **🛡️ 非文字内容跳过翻译** — 纯标点/数字/emoji 直接跳过，不再被大模型"翻译"成无关文字
+- **⚡ 多模型并行竞速** — 一条消息同时发给所有 Provider，谁先返回有效译文用谁，延迟更低
+- **🎨 新 exe 图标 + 设置页展示图** — 更换图标，设置页 credits 区新增展示图
 
 ### 🎨 v2.3.0 — 术语处理重构 + 翻译质量优化
 
@@ -240,7 +246,7 @@
 
 ### 方式一：📦 下载 exe 直接运行（推荐）
 
-从 [📥 GitHub Releases](https://github.com/BunNiuNai/Euro-Truck-Simulator-2-TruckersMP-In-Game-Translator/releases/latest) 下载最新 `ETS2-TruckersMP翻译器-v2.3.0.exe`，双击运行即可。
+从 [📥 GitHub Releases](https://github.com/BunNiuNai/Euro-Truck-Simulator-2-TruckersMP-In-Game-Translator/releases/latest) 下载最新 `ETS2-TruckersMP翻译器-v2.3.1.exe`，双击运行即可。
 
 > ✅ 无需安装 Python · 无需配置环境 · 开箱即用
 
@@ -262,7 +268,7 @@ python main.py
 
 ```bash
 python build_exe.py
-# 输出 → dist/ETS2-TruckersMP翻译器-v2.3.0.exe
+# 输出 → dist/ETS2-TruckersMP翻译器-v2.3.1.exe
 ```
 
 ---
@@ -346,7 +352,8 @@ python build_exe.py
 │  · 本地字典拦截：俚语/ETS2词汇直接命中，零 API 调用             │
 │  · 混合语言智能拆分：中文保留只译外语                            │
 │  · 批量模式：0.3s 窗口收集 + 同文本合并                         │
-│  · 多 Provider 轮转负载均衡 + 熔断回退                          │
+│  · 非文字内容（标点/数字/emoji）直接跳过                        │
+│  · 多 Provider 并行竞速 + 熔断回退                              │
 │  · system+user prompt（温度 0、动态 max_tokens）               │
 │  · 后处理：补译漏译缩写 + 保留@玩家名 + 未翻译校验              │
 │  · LRU 缓存 1000 条 · 配置热重载 3s                            │
@@ -373,7 +380,7 @@ python build_exe.py
 ├── 🚀 main.py              # 入口：App 主控、单实例锁、设置对话框、模块接线
 ├── ⚙️ config.py             # 配置模型、DPAPI 加密、原子保存、v1→v2 迁移
 ├── 📡 monitor.py           # TMP 聊天日志监控（增量轮询、正则解析、服务器/昵称识别）
-├── 🧠 translator.py        # 翻译引擎（轮转分流、熔断、缓存、批量、混合语言拆分、后处理）
+├── 🧠 translator.py        # 翻译引擎（并行竞速、熔断、缓存、批量、混合语言拆分、非文字跳过、后处理）
 ├── 📚 chat_dictionary.py   # 五层术语处理（俚语词典/短语回退/结构化短语/prompt映射/后处理补译 + ETS2词汇）
 ├── 🪟 overlay.py           # 显示窗口（毛玻璃悬浮窗、双模式、Win32 API、输入栏、热键）
 ├── 🪟 acrylic_helper.py    # Win32 亚克力/云母毛玻璃效果（Win11 Mica + Win10 Acrylic）
@@ -393,7 +400,7 @@ python build_exe.py
 ├── 📄 requirements.txt     # Python 依赖（仅 httpx）
 ├── 🎨 icon.ico             # 程序图标
 └── 📦 dist/                # 构建输出
-    └── ETS2-TruckersMP翻译器-v2.3.0.exe
+    └── ETS2-TruckersMP翻译器-v2.3.1.exe
 ```
 
 ---
