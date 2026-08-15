@@ -17,7 +17,7 @@ _version_match = re.search(r'VERSION\s*=\s*"(v[\d.]+)"', open(_config_path, enco
 VERSION = _version_match.group(1) if _version_match else "v0.0.0"
 NAME = f"ETS2-TruckersMP翻译器-{VERSION}"
 ICON = os.path.join(PROJECT_DIR, "icon.ico")
-ICON_SRC = os.path.join(PROJECT_DIR, "xintubiao.png")
+ICON_SRC = os.path.join(PROJECT_DIR, "75daa7c795d2fdc7dad84ec6b0636ddd.jpg")
 
 
 def build():
@@ -34,6 +34,7 @@ def build():
         "--name", NAME,
         "--icon", ICON,
         "--add-data", f"{ICON};.",
+        "--add-data", f"{os.path.join(PROJECT_DIR, 'xintubiao.png')};.",
         "--hidden-import", "httpx",
         "--hidden-import", "chat_dictionary",
         "--hidden-import", "message_types",

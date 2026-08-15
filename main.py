@@ -3,6 +3,7 @@ ETS2 Chat Translator - Free & Open Source
 Entry point: tray icon, window management, module wiring.
 """
 import ctypes
+import os
 import sys
 import threading
 import tkinter as tk
@@ -14,6 +15,15 @@ from tkinter import messagebox
 from config import AppConfig, load_config, save_config, CONFIG_PATH, DOCUMENTS_PATH
 from monitor import ChatMonitor, CHAT_LOG_DIR, log_dir_status
 from overlay import OverlayWindow
+
+
+def _resource_path(name):
+    """解析资源路径：兼容源码运行和 PyInstaller 打包。"""
+    base = getattr(sys, '_MEIPASS', None)
+    if base:
+        return os.path.join(base, name)
+    return os.path.join(os.path.dirname(os.path.abspath(__file__)), name)
+
 
 # ---- single-instance lock ----
 _SINGLE_MUTEX_NAME = "Global\\ETS2_Chat_Translator_SingleInstance"
@@ -575,9 +585,19 @@ class SettingsDialog:
                  bg=page_bg, fg="#569cd6",
                  font=("Microsoft YaHei", 8, "italic")).pack(anchor=tk.W, pady=(0, 4))
 
-        tk.Label(credits, text="翻译器更新与使用反馈可在 Kook 频道留言，如需新功能欢迎提出",
+        # 底部：反馈文字（左）+ 展示图（右）
+        bottom_row = tk.Frame(credits, bg=page_bg)
+        bottom_row.pack(fill=tk.X)
+        tk.Label(bottom_row, text="翻译器更新与使用反馈可在 Kook 频道留言，如需新功能欢迎提出",
                  bg=page_bg, fg=self._TEXT_SEC,
-                 font=("Microsoft YaHei", 9)).pack(anchor=tk.W)
+                 font=("Microsoft YaHei", 9)).pack(side=tk.LEFT)
+        try:
+            _logo = tk.PhotoImage(file=_resource_path("xintubiao.png"))
+            self._logo_original = _logo  # 防止 subsample 结果被 GC
+            self._logo_photo = _logo.subsample(12)
+            tk.Label(bottom_row, image=self._logo_photo, bg=page_bg).pack(side=tk.RIGHT)
+        except Exception:
+            pass
 
         # ---- activate first tab ----
         self._active_tab = None
