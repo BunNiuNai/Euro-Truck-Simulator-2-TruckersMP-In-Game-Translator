@@ -10,6 +10,7 @@ import re
 import threading
 import time
 from collections import OrderedDict
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from queue import Queue
 
 import httpx
@@ -20,6 +21,7 @@ from message_types import DisplayMessage, TranslationStats
 from chat_dictionary import (
     PROMPT_MAPPING,
     fix_leftover_shorthand,
+    is_non_translatable,
     looks_untranslated,
     preserve_mention_prefix,
     short_phrase_fallback,
@@ -642,13 +644,13 @@ class Translator(threading.Thread):
                     event.set()  # wake waiters first — they read _in_flight_results
 
     def _call_api_internal(self, text: str) -> tuple[str, str, str]:
-        """Round-robin provider selection with circuit breaker fallback.
+        """多 Provider 并行竞速：所有 provider 同时请求，谁先返回有效译文用谁。
         Returns (translated_text, provider_label, model_name)."""
         providers = [p for p in self.cfg.llm_providers if p.get("enabled", True)]
         if not providers:
             return self._call_api_legacy(text), "legacy", ""
 
-        # Filter out cooling providers
+        # 过滤冷却中的 provider
         active = [p for p in providers if not self._is_cooling(p.get("label", "unknown"))]
         if not active:
             log = get_logger()
@@ -656,63 +658,34 @@ class Translator(threading.Thread):
                 log.warn("LLM", "所有 Provider 均处于冷却期，强制重试全部")
             active = providers
 
-        # Round-robin selection
-        with self._health_lock:
-            idx = getattr(self, '_rr_index', 0)
-            setattr(self, '_rr_index', (idx + 1) % len(active))
-
         log = get_logger()
-        selected = active[idx]
-        label = selected.get("label", "unknown")
-        model = selected.get("model", "")
 
-        # Try selected provider
+        # 并行竞速：所有 provider 同时请求
+        executor = ThreadPoolExecutor(max_workers=len(active))
         try:
-            result = self._call_provider(selected, text)
-            if looks_untranslated(text, result, self.cfg.target_language):
-                raise Exception("returned original/non-target text")
-            self._note_provider_result(label, True)
-            if log:
-                log.info("LLM", f"轮转成功 [{idx}/{len(active)}]: {label}")
-            return result, label, model
-        except Exception as e:
-            err = self._format_error(e)
-            self._note_provider_result(label, False)
-            if log:
-                log.warn("LLM", f"轮转失败: {label} - {err}")
-
-        # Fallback: try remaining providers in round-robin order
-        for offset in range(1, len(active)):
-            candidate = active[(idx + offset) % len(active)]
-            clabel = candidate.get("label", "unknown")
-            cmodel = candidate.get("model", "")
-            try:
-                result = self._call_provider(candidate, text)
-                if looks_untranslated(text, result, self.cfg.target_language):
-                    raise Exception("returned original/non-target text")
-                self._note_provider_result(clabel, True)
-                if log:
-                    log.info("LLM", f"回退成功 [{offset}]: {clabel}")
-                return result, clabel, cmodel
-            except Exception as e:
-                err = self._format_error(e)
-                self._note_provider_result(clabel, False)
-                if log:
-                    log.warn("LLM", f"回退失败: {clabel} - {err}")
-
-        # Last resort: retry all including cooling
-        for p in providers:
-            plabel = p.get("label", "unknown")
-            pmodel = p.get("model", "")
-            try:
-                result = self._call_provider(p, text, timeout=8.0)
-                if looks_untranslated(text, result, self.cfg.target_language):
-                    raise Exception("returned original/non-target text")
-                self._note_provider_result(plabel, True)
-                return result, plabel, pmodel
-            except Exception:
-                self._note_provider_result(plabel, False)
-                time.sleep(0.18)
+            futures = {executor.submit(self._call_provider, p, text): p for p in active}
+            for future in as_completed(futures):
+                p = futures[future]
+                label = p.get("label", "unknown")
+                model = p.get("model", "")
+                try:
+                    result = future.result()
+                    if looks_untranslated(text, result, self.cfg.target_language):
+                        self._note_provider_result(label, False)
+                        if log:
+                            log.warn("LLM", f"竞速结果无效: {label}")
+                        continue
+                    self._note_provider_result(label, True)
+                    if log:
+                        log.info("LLM", f"竞速成功: {label}")
+                    return result, label, model
+                except Exception as e:
+                    err = self._format_error(e)
+                    self._note_provider_result(label, False)
+                    if log:
+                        log.warn("LLM", f"竞速失败: {label} - {err}")
+        finally:
+            executor.shutdown(wait=False, cancel_futures=True)
 
         raise Exception("所有 Provider 翻译失败")
 
@@ -744,7 +717,9 @@ class Translator(threading.Thread):
         return data["choices"][0]["message"]["content"].strip()
 
     def _should_skip(self, text: str) -> bool:
-        """Skip messages already in the target language (all supported languages)."""
+        """跳过无需翻译的消息：纯标点/数字/emoji，或已在目标语言。"""
+        if is_non_translatable(text):
+            return True
         return _should_skip_internal(text, self.cfg.target_language)
 
     def _format_error(self, exc: Exception) -> str:

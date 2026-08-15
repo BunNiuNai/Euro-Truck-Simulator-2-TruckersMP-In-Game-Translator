@@ -389,3 +389,11 @@ def guess_source_language(text):
     if any(c in lower for c in 'ãõ'):
         return 'pt'
     return 'en'
+
+
+def is_non_translatable(text):
+    """判断是否无需翻译：纯标点/数字/emoji/无字母内容（返回 True 表示跳过）。"""
+    value = _trim_edge_punctuation(text.strip())
+    if not value:
+        return True
+    return not any(ch.isalpha() for ch in value)

@@ -136,3 +136,50 @@ def test_batch_split_success_does_not_fallback():
     t._flush_llm(msgs)
 
     assert t._translate_with_mixed_lang.call_count == 0
+
+
+def test_race_skips_untranslated_result():
+    cfg = AppConfig()
+    cfg.target_language = "zh-CN"
+    cfg.llm_providers = [
+        {"label": "bad", "model": "m1", "enabled": True, "endpoint": "", "api_key": ""},
+        {"label": "good", "model": "m2", "enabled": True, "endpoint": "", "api_key": ""},
+    ]
+    t = Translator(cfg, Queue(), Queue())
+
+    def fake_call(provider, text):
+        if provider["label"] == "bad":
+            return text  # 返回原文（未翻译）
+        return "好的译文"
+
+    t._call_provider = MagicMock(side_effect=fake_call)
+
+    result, label, model = t._call_api_internal("hello")
+
+    assert result == "好的译文"
+    assert label == "good"
+
+
+def test_race_calls_all_providers_in_parallel():
+    import time
+    cfg = AppConfig()
+    cfg.target_language = "zh-CN"
+    cfg.llm_providers = [
+        {"label": "a", "model": "m1", "enabled": True, "endpoint": "", "api_key": ""},
+        {"label": "b", "model": "m2", "enabled": True, "endpoint": "", "api_key": ""},
+    ]
+    t = Translator(cfg, Queue(), Queue())
+
+    calls = []
+
+    def fake_call(provider, text):
+        calls.append(provider["label"])
+        time.sleep(0.05)  # 确保两个 provider 都先被调度
+        return "译文"
+
+    t._call_provider = MagicMock(side_effect=fake_call)
+
+    t._call_api_internal("hello")
+
+    # 竞速：所有 provider 都被并行调用，而非只轮转到第一个
+    assert set(calls) == {"a", "b"}

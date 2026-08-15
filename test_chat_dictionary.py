@@ -12,6 +12,7 @@ from chat_dictionary import (
     preserve_mention_prefix,
     looks_untranslated,
     guess_source_language,
+    is_non_translatable,
 )
 
 
@@ -91,3 +92,16 @@ def test_guess_source_language():
     assert guess_source_language("привет как дела") == "ru"
     assert guess_source_language("merhaba nasılsın") == "tr"
     assert guess_source_language("hello there") == "en"
+
+
+def test_is_non_translatable():
+    # 纯标点/数字/空串 → 无需翻译
+    assert is_non_translatable(".") is True
+    assert is_non_translatable("...") is True
+    assert is_non_translatable("123") is True
+    assert is_non_translatable("") is True
+    assert is_non_translatable("!?") is True
+    # 含字母 → 需要翻译
+    assert is_non_translatable("hello") is False
+    assert is_non_translatable("你好") is False
+    assert is_non_translatable("1 sec") is False
